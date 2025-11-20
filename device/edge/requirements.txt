@@ -1,0 +1,6 @@
+numpy
+scipy
+mne
+tflite-runtime # or replace with onnxruntime
+pyserial
+websockets

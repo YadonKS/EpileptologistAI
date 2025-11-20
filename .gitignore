@@ -1,0 +1,12 @@
+node_modules/
+venv/
+.env
+dist/
+build/
+__pycache__/
+*.pyc
+*.pkl
+*.h5
+*.tflite
+*.onnx
+.DS_Store
