@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "apply-schema": "node scripts/apply_schema.js",
+    "db-test": "node scripts/test_connection.js",
+    "db-roundtrip": "node scripts/db_roundtrip.js"
+    ,
+    "rest-roundtrip": "node scripts/supabase_rest_roundtrip.js"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -11,6 +16,7 @@
     "cors": "^2.8.5",
     "pg": "^8.11.0",
     "ws": "^8.13.0",
-    "jsonwebtoken": "^9.0.0"
+    "jsonwebtoken": "^9.0.0",
+    "dotenv": "^16.3.1"
   }
 }
