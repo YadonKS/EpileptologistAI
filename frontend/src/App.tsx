@@ -6,6 +6,7 @@ import Example from './views/Example'
 import Layout from './components/Layout'
 import Login from './views/web/Login'
 import SignUp from './views/web/SignUp'
+import DataDisplayPage from './views/web/DataDisplayPage';
 
 export default function App(){
   return (
@@ -17,6 +18,7 @@ export default function App(){
           <Route path="/examples" element={<Example />} />
           <Route path="/login" element={<Login />} /> 
           <Route path="/signup" element={<SignUp />} />
+          <Route path="/data" element={<DataDisplayPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>
