@@ -109,12 +109,12 @@ export default function HomeWeb() {
         <div className="mt-3 space-y-2 text-xs text-slate-50">
           <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950 px-3 py-2">
             <span>Previous session </span>
-            <Link to="/examples" className="text-sky-400 hover:underline"> View result </Link>
+            <Link to="/data" className="text-sky-400 hover:underline"> View result </Link>
           </div>
 
           <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-950 px-3 py-2">
             <span>Current session </span>
-            <Link to="/examples" className="text-sky-400 hover:underline"> View result </Link>
+            <Link to="/data" className="text-sky-400 hover:underline"> View result </Link>
           </div>
         </div>
       </section>
