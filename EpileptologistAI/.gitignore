@@ -1,0 +1,29 @@
+node_modules/
+venv/
+dist/
+build/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Secrets
+.env
+ai/.env
+
+# Large data files
+*.csv
+*.joblib
+*.npy
+*.pkl
+*.h5
+*.tflite
+*.onnx
+
+# Trained models (re-generate with train_export.py)
+ai/models/
+
+# Collected raw EEG sessions
+ai/collected_data/
+
+# Real EEG samples for fake stream (re-generate from CSV)
+ai/receiver/real_samples/

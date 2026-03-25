@@ -1,0 +1,12 @@
+numpy
+scipy
+pywt
+scikit-learn
+xgboost
+joblib
+pyserial
+fastapi
+uvicorn[standard]
+websockets
+supabase
+python-dotenv
