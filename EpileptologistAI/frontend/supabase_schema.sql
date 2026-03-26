@@ -2,6 +2,27 @@
 -- EpileptologistAI Database Schema
 -- ============================================================
 
+-- Profiles: one row per auth user for account preferences
+create table if not exists profiles (
+  id uuid references auth.users(id) on delete cascade primary key,
+  email text unique,
+  full_name text,
+  emergency_contact_email text,
+  email_alerts_high_risk boolean not null default true,
+  in_app_alerts_live_monitoring boolean not null default true,
+  monthly_monitoring_summary boolean not null default true,
+  share_anonymized_data boolean not null default false,
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
+);
+
+-- Safe migrations when table already exists
+alter table profiles add column if not exists emergency_contact_email text;
+alter table profiles add column if not exists email_alerts_high_risk boolean not null default true;
+alter table profiles add column if not exists in_app_alerts_live_monitoring boolean not null default true;
+alter table profiles add column if not exists monthly_monitoring_summary boolean not null default true;
+alter table profiles add column if not exists share_anonymized_data boolean not null default false;
+
 -- Sessions: one row per 10-minute monitoring session
 create table sessions (
   id uuid default gen_random_uuid() primary key,
@@ -52,3 +73,19 @@ create policy "Users can view predictions for their sessions"
 create policy "Users can insert predictions for their sessions"
   on predictions for insert
   with check (session_id in (select id from sessions where user_id = auth.uid()));
+
+-- Profile RLS: users can only access their own profile
+alter table profiles enable row level security;
+
+create policy "Users can view their own profile"
+  on profiles for select
+  using (auth.uid() = id);
+
+create policy "Users can insert their own profile"
+  on profiles for insert
+  with check (auth.uid() = id);
+
+create policy "Users can update their own profile"
+  on profiles for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);

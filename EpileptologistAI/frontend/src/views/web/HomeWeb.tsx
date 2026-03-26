@@ -2,19 +2,30 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Card } from '../../components/ui'
 import { Button } from '../../components/ui'
+import { Settings } from 'lucide-react'
 import EEGWaveform from '../../components/EEGWaveform'
 import StatusBadge from '../../components/StatusBadge'
 import MetricCard from '../../components/MetricCard'
 import { useAuth } from '../../lib/auth'
 import { useEEGSocket, startSession, stopSession } from '../../lib/eeg-socket'
 import { getUserSessions, type SessionRecord } from '../../lib/sessions'
+import { defaultAccountSettings, getAccountSettings, saveAccountSettings, type AccountSettings } from '../../lib/accountSettings'
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function HomeWeb() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [pastSessions, setPastSessions] = useState<SessionRecord[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settings, setSettings] = useState<AccountSettings>(defaultAccountSettings)
+  const [settingsDirty, setSettingsDirty] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const sessionIdRef = useRef<string | null>(null)
 
   const { lastPrediction, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
@@ -25,6 +36,21 @@ export default function HomeWeb() {
   const prediction = lastPrediction
     ? { label: lastPrediction.prediction === 1 ? 'Seizure Detected' : 'No Seizure', proba: lastPrediction.probability }
     : null
+
+  useEffect(() => {
+    if (!user) return
+    setSettingsLoading(true)
+    setSettingsError(null)
+    getAccountSettings(user.id, user.email)
+      .then((loaded) => {
+        setSettings(loaded)
+        setSettingsDirty(false)
+      })
+      .catch((err: any) => {
+        setSettingsError(err?.message ?? 'Could not load account settings.')
+      })
+      .finally(() => setSettingsLoading(false))
+  }, [user])
 
   // Update status when WebSocket connects
   useEffect(() => {
@@ -85,6 +111,38 @@ export default function HomeWeb() {
   const progress = Math.min((windowCount / 100) * 100, 100)
   const minutes = Math.floor(elapsed / 60)
   const seconds = elapsed % 60
+  const emergencyContactTrimmed = settings.emergencyContact.trim()
+  const emergencyContactInvalid =
+    emergencyContactTrimmed.length > 0 && !EMAIL_REGEX.test(emergencyContactTrimmed)
+
+  const onSettingChange = (patch: Partial<AccountSettings>) => {
+    setSettings((prev) => ({ ...prev, ...patch }))
+    setSettingsDirty(true)
+    setSettingsNotice(null)
+  }
+
+  const handleSaveSettings = async () => {
+    if (!user) return
+
+    if (emergencyContactInvalid) {
+      setSettingsError('Emergency contact email format is invalid.')
+      return
+    }
+
+    setSettingsSaving(true)
+    setSettingsError(null)
+    setSettingsNotice(null)
+
+    try {
+      await saveAccountSettings(user.id, user.email, settings)
+      setSettingsDirty(false)
+      setSettingsNotice('Settings saved to your cloud account.')
+    } catch (err: any) {
+      setSettingsError(err?.message ?? 'Failed to save settings.')
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -94,8 +152,135 @@ export default function HomeWeb() {
           <h1 className="text-2xl font-bold text-slate-100">EEG Monitoring Dashboard</h1>
           <p className="text-sm text-slate-500 mt-1">Epilepsy prediction based on real-time seizure detection</p>
         </div>
-        <StatusBadge status={connectionStatus} />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setSettingsOpen((v) => !v)}
+            aria-label="Open account settings"
+            title="Account Settings"
+          >
+            <Settings size={18} />
+          </Button>
+          <StatusBadge status={connectionStatus} />
+        </div>
       </div>
+
+      {settingsOpen && (
+        <Card className="space-y-4" glow="cyan">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">Account Settings</h2>
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className="text-slate-500 hover:text-slate-300 text-sm"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <label className="space-y-1.5 md:col-span-2">
+              <span className="text-slate-400">Signed-in Account</span>
+              <input
+                type="text"
+                value={user?.email ?? 'Unknown user'}
+                disabled
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/40 px-3 py-2 text-slate-300"
+              />
+            </label>
+
+            <label className="space-y-1.5 md:col-span-2">
+              <span className="text-slate-400">Emergency Contact Email (optional)</span>
+              <input
+                type="email"
+                placeholder="family@example.com"
+                value={settings.emergencyContact}
+                onChange={(e) => onSettingChange({ emergencyContact: e.target.value })}
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-slate-100"
+              />
+              {emergencyContactInvalid && (
+                <p className="text-xs text-amber-400">Please enter a valid email address.</p>
+              )}
+            </label>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={settings.emailAlerts}
+                  onChange={(e) => onSettingChange({ emailAlerts: e.target.checked })}
+                />
+                Email alerts for high-risk session outcomes
+              </label>
+
+              <label className="flex items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={settings.inAppAlerts}
+                  onChange={(e) => onSettingChange({ inAppAlerts: e.target.checked })}
+                />
+                In-app alerts during live monitoring
+              </label>
+
+              <label className="flex items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={settings.monthlySummary}
+                  onChange={(e) => onSettingChange({ monthlySummary: e.target.checked })}
+                />
+                Monthly monitoring summary by email
+              </label>
+
+              <label className="flex items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={settings.shareAnonymizedData}
+                  onChange={(e) => onSettingChange({ shareAnonymizedData: e.target.checked })}
+                />
+                Share anonymized data for model improvement
+              </label>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-slate-400">Security</p>
+              <Button type="button" variant="outline" className="w-full" onClick={() => signOut()}>
+                Sign Out On This Device
+              </Button>
+              <p className="text-xs text-slate-500">
+                Password updates and account deletion are managed in Supabase Auth settings.
+              </p>
+            </div>
+          </div>
+
+          {settingsLoading && (
+            <p className="text-xs text-slate-500">Loading saved settings...</p>
+          )}
+
+          {settingsError && (
+            <p className="text-xs text-red-400">{settingsError}</p>
+          )}
+
+          {settingsNotice && (
+            <p className="text-xs text-emerald-400">{settingsNotice}</p>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={handleSaveSettings}
+              disabled={settingsSaving || settingsLoading || !settingsDirty || emergencyContactInvalid}
+            >
+              {settingsSaving ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            These settings are stored in your cloud account profile.
+          </p>
+        </Card>
+      )}
 
       {/* Backend error banner */}
       {backendError && (
@@ -217,7 +402,7 @@ export default function HomeWeb() {
                   {prediction.proba > 0.5 ? 'Seizure Detected' : 'No Seizure'}
                 </p>
                 <p className="text-sm text-slate-500 mt-1">
-                  Confidence: <span className="font-mono text-slate-300">{((1 - prediction.proba) * 100).toFixed(1)}%</span>
+                  Confidence: <span className="font-mono text-slate-300">{(prediction.proba * 100).toFixed(1)}%</span>
                 </p>
               </div>
               <div className="text-right">
@@ -260,7 +445,7 @@ export default function HomeWeb() {
       </Card>
 
       {/* Past sessions */}
-      {pastSessions.length > 0 && (
+        {pastSessions.length > 0 && (
         <Card>
           <h2 className="text-sm font-semibold text-slate-200 mb-4">Recent Sessions</h2>
           <div className="space-y-2">
