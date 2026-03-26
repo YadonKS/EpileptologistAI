@@ -43,8 +43,25 @@ async function run(){
   const deviceId = 'rest-test-device-1';
   const event = { device_id: deviceId, ts: new Date().toISOString(), event_type: 'rest_roundtrip', payload: { note: 'inserted via REST' } };
 
+  const devicesUrl = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1/devices`;
   const insertUrl = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1/events`;
   try{
+    console.log('Upserting test device via REST...');
+    const devRes = await fetchImpl(devicesUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': SERVICE_ROLE,
+        'Authorization': `Bearer ${SERVICE_ROLE}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
+      body: JSON.stringify([{ id: deviceId, name: 'REST test device' }])
+    });
+    if(!devRes.ok){
+      const text = await devRes.text();
+      throw new Error(`Device upsert failed: ${devRes.status} ${devRes.statusText} - ${text}`);
+    }
+
     console.log('Inserting event via REST...');
     const insRes = await fetchImpl(insertUrl, {
       method: 'POST',
