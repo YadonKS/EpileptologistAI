@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
+import BrandLogo from './BrandLogo'
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -42,10 +43,8 @@ function LayoutHeader() {
     <header className="border-b border-gray-800/50 bg-surface/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
+          <div className="h-8 w-8 rounded-lg overflow-hidden bg-slate-900/70">
+            <BrandLogo className="h-full w-full object-cover" />
           </div>
           <span className="text-lg font-bold text-slate-100 tracking-tight">
             Epileptologist<span className="text-brand-400">AI</span>

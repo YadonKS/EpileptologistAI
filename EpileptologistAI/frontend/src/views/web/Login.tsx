@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui'
 import { Input } from '../../components/ui'
+import BrandLogo from '../../components/BrandLogo'
 import { useAuth } from '../../lib/auth'
 
 export default function Login() {
@@ -32,10 +33,8 @@ export default function Login() {
 
       <div className="relative z-10 w-full max-w-md px-6">
         <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 items-center justify-center mb-4 shadow-lg shadow-brand-500/20">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
+          <div className="inline-flex h-14 w-14 rounded-2xl items-center justify-center mb-4 shadow-lg shadow-brand-500/20 overflow-hidden bg-slate-900/60">
+            <BrandLogo className="h-full w-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold text-slate-100">
             Epileptologist<span className="text-brand-400">AI</span>
