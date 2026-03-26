@@ -6,6 +6,31 @@ __pycache__/
 *.pyc
 .DS_Store
 
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Python virtual/env and tooling caches
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Test/build coverage outputs
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+
+# JavaScript build caches
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+
 # Secrets
 .env
 ai/.env

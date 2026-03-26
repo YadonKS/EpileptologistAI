@@ -1,0 +1,40 @@
+# Workspace-level ignores
+
+# Node dependencies and build output
+node_modules/
+**/node_modules/
+dist/
+build/
+.vite/
+.parcel-cache/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Python caches and virtual environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Coverage artifacts
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+
+# Local working notes
+prompt_log.txt
