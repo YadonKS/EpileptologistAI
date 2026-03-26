@@ -4,6 +4,18 @@ import { Button } from '../../components/ui'
 import { Input } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function getPasswordChecks(password: string) {
+  return {
+    minLength: password.length >= 8,
+    hasUpper: /[A-Z]/.test(password),
+    hasLower: /[a-z]/.test(password),
+    hasNumber: /\d/.test(password),
+    hasSymbol: /[^A-Za-z0-9]/.test(password),
+  }
+}
+
 export default function SignUp() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -13,22 +25,33 @@ export default function SignUp() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const { signUp } = useAuth()
+  const emailTrimmed = email.trim()
+  const emailLooksValid = EMAIL_REGEX.test(emailTrimmed)
+  const pwd = getPasswordChecks(password)
+  const strengthScore = [pwd.hasUpper, pwd.hasLower, pwd.hasNumber, pwd.hasSymbol].filter(Boolean).length
+  const isStrongPassword = pwd.minLength && strengthScore >= 3
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
+    if (!EMAIL_REGEX.test(emailTrimmed)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
+    if (!isStrongPassword) {
+      setError('Password must be 8+ chars and include at least 3 of: uppercase, lowercase, number, symbol')
+      return
+    }
+
     if (password !== confirm) {
       setError('Passwords do not match')
       return
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
-      return
-    }
 
     setLoading(true)
-    const { error } = await signUp(email, password, name)
+    const { error } = await signUp(emailTrimmed, password, name.trim())
     setLoading(false)
 
     if (error) {
@@ -97,8 +120,12 @@ export default function SignUp() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                     required
                   />
+                  {email.length > 0 && !emailLooksValid && (
+                    <p className="text-xs text-amber-400">Enter a valid email like name@example.com</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -106,11 +133,23 @@ export default function SignUp() {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    minLength={8}
                     required
                   />
+                  <div className="grid grid-cols-1 gap-1 text-xs text-slate-500">
+                    <p className={pwd.minLength ? 'text-emerald-400' : 'text-slate-500'}>8+ characters</p>
+                    <p className={pwd.hasUpper ? 'text-emerald-400' : 'text-slate-500'}>At least one uppercase letter</p>
+                    <p className={pwd.hasLower ? 'text-emerald-400' : 'text-slate-500'}>At least one lowercase letter</p>
+                    <p className={pwd.hasNumber ? 'text-emerald-400' : 'text-slate-500'}>At least one number</p>
+                    <p className={pwd.hasSymbol ? 'text-emerald-400' : 'text-slate-500'}>At least one symbol</p>
+                    <p className={isStrongPassword ? 'text-emerald-400' : 'text-amber-400'}>
+                      Strength: {isStrongPassword ? 'Good' : 'Needs improvement'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -121,6 +160,7 @@ export default function SignUp() {
                     placeholder="Repeat your password"
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
+                    autoComplete="new-password"
                     required
                   />
                 </div>
