@@ -32,6 +32,7 @@ export default function HomeWeb() {
     signalQualityMessage,
     backendError,
     lastPrediction,
+    lastWindowData,
     completion,
     elapsedSeconds,
     isConnected,
@@ -474,7 +475,13 @@ export default function HomeWeb() {
           </Link>
         </div>
         <div className="p-3">
-          <EEGWaveform channels={6} height={340} speed={isMonitoring ? 2 : 0.5} paused={!isMonitoring} />
+          <EEGWaveform
+            channels={6}
+            height={340}
+            speed={isMonitoring ? 2 : 0.5}
+            paused={!isMonitoring}
+            streamedWindow={lastWindowData}
+          />
         </div>
       </Card>
 

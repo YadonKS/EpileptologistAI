@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react'
 
-const CHANNEL_NAMES = ['FP1-F7', 'F7-T7', 'T7-P7', 'FP2-F8', 'F8-T8', 'T8-P8']
 const CHANNEL_COLORS = ['#22d3ee', '#34d399', '#a78bfa', '#fb923c', '#f472b6', '#facc15']
 
 interface Props {
@@ -8,12 +7,22 @@ interface Props {
   height?: number
   speed?: number
   paused?: boolean
+  streamedWindow?: number[][] | null
+  channelLabels?: string[]
 }
 
-export default function EEGWaveform({ channels = 6, height = 360, speed = 2, paused = false }: Props) {
+export default function EEGWaveform({
+  channels = 6,
+  height = 360,
+  speed = 2,
+  paused = false,
+  streamedWindow = null,
+  channelLabels,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const offsetRef = useRef(0)
   const animRef = useRef<number>(0)
+  const streamStartMsRef = useRef<number>(Date.now())
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -29,6 +38,7 @@ export default function EEGWaveform({ channels = 6, height = 360, speed = 2, pau
     }
     resize()
     window.addEventListener('resize', resize)
+    streamStartMsRef.current = Date.now()
 
     const draw = () => {
       const w = canvas.width / 2
@@ -45,7 +55,7 @@ export default function EEGWaveform({ channels = 6, height = 360, speed = 2, pau
         // channel label
         ctx.fillStyle = 'rgba(148, 163, 184, 0.6)'
         ctx.font = '10px JetBrains Mono, monospace'
-        ctx.fillText(CHANNEL_NAMES[ch] || `Ch${ch + 1}`, 4, ch * chHeight + 14)
+        ctx.fillText(channelLabels?.[ch] || `Column ${ch + 1}`, 4, ch * chHeight + 14)
 
         // divider line
         if (ch > 0) {
@@ -62,21 +72,43 @@ export default function EEGWaveform({ channels = 6, height = 360, speed = 2, pau
         ctx.lineWidth = 1.2
         ctx.beginPath()
 
-        const baseFreq = 4 + ch * 1.5
-        const noiseAmp = 0.3
+        if (streamedWindow && streamedWindow.length > 0 && Array.isArray(streamedWindow[0])) {
+          const sampleCount = streamedWindow.length
+          const elapsedSec = (Date.now() - streamStartMsRef.current) / 1000
+          const playhead = (elapsedSec * 256) % sampleCount
+          const samplesPerPixel = sampleCount / Math.max(w, 1)
+          const maxAbs = Math.max(
+            1,
+            ...streamedWindow.map((row) => Math.abs(Number(row?.[ch] ?? 0)))
+          )
 
-        for (let x = 0; x < w; x++) {
-          const t = (x + offsetRef.current) * 0.02
-          const signal =
-            Math.sin(t * baseFreq) * 0.4 +
-            Math.sin(t * baseFreq * 2.3) * 0.2 +
-            Math.sin(t * baseFreq * 0.7) * 0.15 +
-            Math.sin(t * 11 + ch) * 0.1 +
-            (Math.random() - 0.5) * noiseAmp
+          for (let x = 0; x < w; x++) {
+            let idxFloat = playhead - (w - 1 - x) * samplesPerPixel
+            while (idxFloat < 0) idxFloat += sampleCount
+            const idx = Math.floor(idxFloat) % sampleCount
+            const val = Number(streamedWindow[idx]?.[ch] ?? 0)
+            const norm = val / maxAbs
+            const y = yBase - norm * amplitude * 0.9
+            if (x === 0) ctx.moveTo(x, y)
+            else ctx.lineTo(x, y)
+          }
+        } else {
+          const baseFreq = 4 + ch * 1.5
+          const noiseAmp = 0.3
 
-          const y = yBase + signal * amplitude
-          if (x === 0) ctx.moveTo(x, y)
-          else ctx.lineTo(x, y)
+          for (let x = 0; x < w; x++) {
+            const t = (x + offsetRef.current) * 0.02
+            const signal =
+              Math.sin(t * baseFreq) * 0.4 +
+              Math.sin(t * baseFreq * 2.3) * 0.2 +
+              Math.sin(t * baseFreq * 0.7) * 0.15 +
+              Math.sin(t * 11 + ch) * 0.1 +
+              (Math.random() - 0.5) * noiseAmp
+
+            const y = yBase + signal * amplitude
+            if (x === 0) ctx.moveTo(x, y)
+            else ctx.lineTo(x, y)
+          }
         }
         ctx.stroke()
       }
@@ -92,7 +124,7 @@ export default function EEGWaveform({ channels = 6, height = 360, speed = 2, pau
       window.removeEventListener('resize', resize)
       cancelAnimationFrame(animRef.current)
     }
-  }, [channels, height, speed, paused])
+  }, [channelLabels, channels, height, paused, speed, streamedWindow])
 
   return (
     <div className="relative rounded-xl bg-bg border border-gray-800/50 overflow-hidden">

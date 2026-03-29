@@ -5,6 +5,7 @@ import numpy as np
 from receiver.line_parser import parse_line_to_sample
 from receiver.window_builder import build_window
 from receiver.fake_arduino_flow import fake_arduino_stream, get_last_window_is_seizure
+from receiver.flat_test_feed import flat_arduino_stream
 
 # Reads from .env when running via server.py, falls back to defaults
 USE_FAKE_ARDUINO = os.environ.get("USE_FAKE_ARDUINO", "true").lower() == "true"
@@ -22,13 +23,29 @@ _fake_stream = None
 _quality_mock_index = 0
 
 
+def use_flat_test_feed():
+    """Single switch for test mode.
+
+    Return True to stream flat signals for frontend validation.
+    Return False to restore the regular mock EEG feed.
+    """
+    return False
+
+
+def create_fake_stream():
+    # Change only use_flat_test_feed() return value to toggle feeds.
+    if use_flat_test_feed():
+        return flat_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
+    return fake_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
+
+
 def get_window():
     global _fake_stream
     rows = []
 
     if USE_FAKE_ARDUINO:
         if _fake_stream is None:
-            _fake_stream = fake_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
+            _fake_stream = create_fake_stream()
         stream = _fake_stream
     else:
         import serial
@@ -115,7 +132,7 @@ def assess_signal_quality(sample_count=256):
     if USE_FAKE_ARDUINO:
         global _fake_stream
         if _fake_stream is None:
-            _fake_stream = fake_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
+            _fake_stream = create_fake_stream()
         stream = _fake_stream
     else:
         import serial
@@ -173,6 +190,8 @@ def reset_fake_stream():
 def get_last_fake_window_is_seizure():
     """Expose current fake-window class label for mock-mode post-processing."""
     if not USE_FAKE_ARDUINO:
+        return None
+    if use_flat_test_feed():
         return None
     return get_last_window_is_seizure()
 

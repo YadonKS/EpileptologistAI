@@ -10,6 +10,7 @@ export interface PredictionMessage {
   prediction: number
   probability: number
   elapsed_seconds: number
+  raw_window?: number[][]
 }
 
 export interface CompleteMessage {
@@ -29,8 +30,18 @@ export type WSMessage = PredictionMessage | CompleteMessage | ErrorMessage
 
 const LAST_RUN_STORAGE_KEY = 'eeg:lastRun'
 
+interface CachedPredictionPoint {
+  type: 'prediction'
+  window: number
+  total: number
+  prediction: number
+  probability: number
+  elapsed_seconds: number
+}
+
 interface UseEEGSocketReturn {
   lastPrediction: PredictionMessage | null
+  lastWindowData: number[][] | null
   completion: CompleteMessage | null
   error: string | null
   isConnected: boolean
@@ -40,8 +51,9 @@ interface UseEEGSocketReturn {
 export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
   const wsRef = useRef<WebSocket | null>(null)
   const runStartedAtRef = useRef<string | null>(null)
-  const predictionHistoryRef = useRef<PredictionMessage[]>([])
+  const predictionHistoryRef = useRef<CachedPredictionPoint[]>([])
   const [lastPrediction, setLastPrediction] = useState<PredictionMessage | null>(null)
+  const [lastWindowData, setLastWindowData] = useState<number[][] | null>(null)
   const [completion, setCompletion] = useState<CompleteMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -66,6 +78,7 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     }
 
     setLastPrediction(null)
+    setLastWindowData(null)
     setCompletion(null)
     setError(null)
     runStartedAtRef.current = new Date().toISOString()
@@ -80,9 +93,17 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     ws.onmessage = (event) => {
       const data: WSMessage = JSON.parse(event.data)
       if (data.type === 'prediction') {
-        predictionHistoryRef.current.push(data)
+        predictionHistoryRef.current.push({
+          type: 'prediction',
+          window: data.window,
+          total: data.total,
+          prediction: data.prediction,
+          probability: data.probability,
+          elapsed_seconds: data.elapsed_seconds,
+        })
         persistCache(null)
         setLastPrediction(data)
+        setLastWindowData(Array.isArray(data.raw_window) ? data.raw_window : null)
       } else if (data.type === 'complete') {
         persistCache(new Date().toISOString())
         setCompletion(data)
@@ -110,7 +131,7 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     }
   }, [])
 
-  return { lastPrediction, completion, error, isConnected, cancel }
+  return { lastPrediction, lastWindowData, completion, error, isConnected, cancel }
 }
 
 

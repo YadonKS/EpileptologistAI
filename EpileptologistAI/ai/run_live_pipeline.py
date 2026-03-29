@@ -120,6 +120,7 @@ def run_pipeline_generator(model, scaler, selector, cancel_event=None, session_i
             "prediction": int(pred),
             "probability": float(proba),
             "elapsed_seconds": (w + 1) * WINDOW_SEC,
+            "raw_window": np.round(X_tc, 3).tolist(),
         }
 
     # Save raw EEG data for retraining

@@ -4,6 +4,7 @@ import { Button } from '../../components/ui'
 import EEGWaveform from '../../components/EEGWaveform'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { useAuth } from '../../lib/auth'
+import { useMonitoring } from '../../lib/monitoring'
 import { getSessionPredictions, getUserSessions, type SessionRecord } from '../../lib/sessions'
 
 const BAND_COLORS: Record<string, string> = {
@@ -112,6 +113,7 @@ function generateHistory(n: number): HistoryPoint[] {
 
 export default function DataDisplayPage() {
   const { user } = useAuth()
+  const { lastWindowData, isMonitoring } = useMonitoring()
   const [tab, setTab] = useState<'signals' | 'power' | 'history'>('signals')
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -254,7 +256,7 @@ export default function DataDisplayPage() {
               <p className="text-xs text-slate-500 mt-0.5">Unfiltered 6-channel recording from device</p>
             </div>
             <div className="p-3">
-              <EEGWaveform channels={6} height={280} speed={2} />
+              <EEGWaveform channels={6} height={280} speed={2} streamedWindow={lastWindowData} paused={!isMonitoring} />
             </div>
           </Card>
 
@@ -264,7 +266,7 @@ export default function DataDisplayPage() {
               <p className="text-xs text-slate-500 mt-0.5">After bandpass (0.5-50 Hz) and notch (60 Hz) filtering</p>
             </div>
             <div className="p-3">
-              <EEGWaveform channels={6} height={280} speed={2} />
+              <EEGWaveform channels={6} height={280} speed={2} streamedWindow={lastWindowData} paused={!isMonitoring} />
             </div>
           </Card>
         </div>

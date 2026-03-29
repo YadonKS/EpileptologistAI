@@ -14,6 +14,7 @@ interface MonitoringContextValue {
   signalQualityMessage: string | null
   backendError: string | null
   lastPrediction: ReturnType<typeof useEEGSocket>['lastPrediction']
+  lastWindowData: ReturnType<typeof useEEGSocket>['lastWindowData']
   completion: ReturnType<typeof useEEGSocket>['completion']
   elapsedSeconds: number
   isConnected: boolean
@@ -41,7 +42,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const sessionIdRef = useRef<string | null>(null)
   const monitoringStartedAtMsRef = useRef<number | null>(null)
 
-  const { lastPrediction, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
+  const { lastPrediction, lastWindowData, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
 
   const isConnected = connectionStatus === 'connected'
   const isMonitoring = monitoringStatus === 'running'
@@ -229,6 +230,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     signalQualityMessage,
     backendError,
     lastPrediction,
+    lastWindowData,
     completion,
     elapsedSeconds,
     isConnected,
@@ -251,6 +253,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     isConnected,
     isMonitoring,
     lastPrediction,
+    lastWindowData,
     monitoringStatus,
     signalQualityMessage,
     signalQualityScore,
