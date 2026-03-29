@@ -5,10 +5,12 @@ Replays actual brain recordings so the model sees realistic patterns.
 
 import random
 import time
+import os
 from pathlib import Path
 import numpy as np
 
 _SAMPLES_PER_WINDOW = 256 * 6  # 1536
+_WINDOWS_PER_SESSION = 100
 
 _seizure_windows = set()
 _normal_data = None
@@ -27,10 +29,22 @@ def _load_real_samples():
 
 
 def _init_seizure_schedule():
-    """Pick 4-12 random windows to be seizure windows."""
+    """Build a controlled seizure schedule for a 100-window session.
+
+    Defaults to a balanced 50/50 split so mock sessions are analyzable and
+    avoid over-representing one class.
+    """
     global _seizure_windows
-    n_seizure = random.randint(4, 12)
-    _seizure_windows = set(random.sample(range(100), n_seizure))
+    ratio_raw = os.environ.get("FAKE_SEIZURE_RATIO", "0.5")
+    try:
+        ratio = float(ratio_raw)
+    except ValueError:
+        ratio = 0.5
+
+    # Keep ratio in a healthy range so one class does not dominate mock runs.
+    ratio = max(0.3, min(0.7, ratio))
+    n_seizure = int(round(_WINDOWS_PER_SESSION * ratio))
+    _seizure_windows = set(random.sample(range(_WINDOWS_PER_SESSION), n_seizure))
 
 
 def fake_arduino_stream(n_channels, fs, realtime=False):
@@ -47,7 +61,8 @@ def fake_arduino_stream(n_channels, fs, realtime=False):
     window_index = 0
 
     while True:
-        is_seizure = window_index in _seizure_windows
+        schedule_index = window_index % _WINDOWS_PER_SESSION
+        is_seizure = schedule_index in _seizure_windows
 
         if is_seizure:
             # Pick a random real seizure window

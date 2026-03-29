@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Card } from '../../components/ui'
 import { Button } from '../../components/ui'
@@ -7,7 +7,7 @@ import EEGWaveform from '../../components/EEGWaveform'
 import StatusBadge from '../../components/StatusBadge'
 import MetricCard from '../../components/MetricCard'
 import { useAuth } from '../../lib/auth'
-import { useEEGSocket, startSession, stopSession } from '../../lib/eeg-socket'
+import { useMonitoring } from '../../lib/monitoring'
 import { getUserSessions, type SessionRecord } from '../../lib/sessions'
 import { defaultAccountSettings, getAccountSettings, saveAccountSettings, type AccountSettings } from '../../lib/accountSettings'
 
@@ -15,14 +15,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function HomeWeb() {
   const { user, signOut } = useAuth()
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
-  const [monitoringStatus, setMonitoringStatus] = useState<'idle' | 'starting' | 'running'>('idle')
-  const [signalQualityState, setSignalQualityState] = useState<'unchecked' | 'checking' | 'good' | 'poor'>('unchecked')
-  const [signalQualityScore, setSignalQualityScore] = useState<number | null>(null)
-  const [signalQualityMessage, setSignalQualityMessage] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [pastSessions, setPastSessions] = useState<SessionRecord[]>([])
-  const [backendError, setBackendError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<AccountSettings>(defaultAccountSettings)
   const [settingsDirty, setSettingsDirty] = useState(false)
@@ -30,12 +23,26 @@ export default function HomeWeb() {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
-  const sessionIdRef = useRef<string | null>(null)
 
-  const { lastPrediction, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
+  const {
+    connectionStatus,
+    monitoringStatus,
+    signalQualityState,
+    signalQualityScore,
+    signalQualityMessage,
+    backendError,
+    lastPrediction,
+    completion,
+    isConnected,
+    isMonitoring,
+    connectDevice,
+    disconnectDevice,
+    startMonitoring,
+    stopMonitoring,
+    checkSignalQuality,
+    clearBackendError,
+  } = useMonitoring()
 
-  const isConnected = connectionStatus === 'connected'
-  const isMonitoring = monitoringStatus === 'running'
   const windowCount = lastPrediction?.window ?? 0
   const elapsed = lastPrediction?.elapsed_seconds ?? 0
   const prediction = lastPrediction
@@ -57,33 +64,6 @@ export default function HomeWeb() {
       .finally(() => setSettingsLoading(false))
   }, [user])
 
-  // Update status when WebSocket connects
-  useEffect(() => {
-    if (wsConnected && monitoringStatus === 'starting') {
-      setMonitoringStatus('running')
-    }
-  }, [wsConnected, monitoringStatus])
-
-  // Handle completion
-  useEffect(() => {
-    if (completion) {
-      setMonitoringStatus('idle')
-      setSessionId(null)
-      sessionIdRef.current = null
-    }
-  }, [completion])
-
-  // Handle WebSocket errors
-  useEffect(() => {
-    if (wsError) {
-      setBackendError(wsError)
-      setMonitoringStatus('idle')
-      setSessionId(null)
-      sessionIdRef.current = null
-    }
-  }, [wsError])
-
-  // Load past sessions
   useEffect(() => {
     if (!user) return
     getUserSessions(user.id).then(setPastSessions).catch(console.error)
@@ -91,94 +71,23 @@ export default function HomeWeb() {
 
   const handleConnect = async () => {
     if (isConnected) {
-      // Disconnect
-      if (sessionIdRef.current) {
-        wsCancel()
-        await stopSession(sessionIdRef.current).catch(console.error)
-        setMonitoringStatus('idle')
-        setSessionId(null)
-        sessionIdRef.current = null
-      }
-      setConnectionStatus('disconnected')
-      setSignalQualityState('unchecked')
-      setSignalQualityScore(null)
-      setSignalQualityMessage(null)
+      await disconnectDevice()
       return
     }
 
-    setBackendError(null)
-    setConnectionStatus('connecting')
-
-    try {
-      const res = await fetch('http://localhost:8000/api/health')
-      if (!res.ok) {
-        throw new Error('Backend not available')
-      }
-      setConnectionStatus('connected')
-      setSignalQualityState('unchecked')
-      setSignalQualityScore(null)
-      setSignalQualityMessage('Run signal quality check before starting monitoring.')
-    } catch (err: any) {
-      setBackendError('Could not connect to the EEG service. Make sure the Python server is running.')
-      setConnectionStatus('disconnected')
-    }
-  }
-
-  const handleCheckSignalQuality = async () => {
-    if (!isConnected || isMonitoring || monitoringStatus === 'starting') return
-
-    setSignalQualityState('checking')
-    setSignalQualityMessage('Checking signal quality...')
-
-    try {
-      const res = await fetch('http://localhost:8000/api/device/signal-quality')
-      if (!res.ok) {
-        throw new Error('Signal quality check failed')
-      }
-      const data = await res.json()
-      const score = typeof data?.score === 'number' ? data.score : null
-      const status = data?.status === 'good' ? 'good' : 'poor'
-
-      setSignalQualityScore(score)
-      setSignalQualityState(status)
-      setSignalQualityMessage(
-        status === 'good'
-          ? 'Signal quality is good. You can start monitoring.'
-          : 'Signal quality is poor. Re-seat the cap and check electrodes, then retry.'
-      )
-    } catch {
-      setSignalQualityState('poor')
-      setSignalQualityScore(null)
-      setSignalQualityMessage('Could not evaluate signal quality. Please try again.')
-    }
+    await connectDevice()
   }
 
   const handleStartMonitoring = async () => {
-    if (!user || !isConnected || monitoringStatus !== 'idle') return
-
-    setBackendError(null)
-    setMonitoringStatus('starting')
-
-    try {
-      const sid = await startSession(user.id)
-      sessionIdRef.current = sid
-      setSessionId(sid)
-    } catch (err: any) {
-      setBackendError('Monitoring could not start. Please try again.')
-      setMonitoringStatus('idle')
-    }
+    await startMonitoring()
   }
 
   const handleStopMonitoring = async () => {
-    if (!sessionIdRef.current) {
-      setMonitoringStatus('idle')
-      return
-    }
-    wsCancel()
-    await stopSession(sessionIdRef.current).catch(console.error)
-    setMonitoringStatus('idle')
-    setSessionId(null)
-    sessionIdRef.current = null
+    await stopMonitoring()
+  }
+
+  const handleCheckSignalQuality = async () => {
+    await checkSignalQuality()
   }
 
   const progress = Math.min((windowCount / 100) * 100, 100)
@@ -219,7 +128,6 @@ export default function HomeWeb() {
 
   return (
     <div className="space-y-6">
-      {/* Hero header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">EEG Monitoring Dashboard</h1>
@@ -355,15 +263,13 @@ export default function HomeWeb() {
         </Card>
       )}
 
-      {/* Backend error banner */}
       {backendError && (
         <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-5 py-3 text-sm text-red-400 flex items-center justify-between">
           <span>{backendError}</span>
-          <button onClick={() => setBackendError(null)} className="text-red-400/60 hover:text-red-400 ml-4">&times;</button>
+          <button onClick={clearBackendError} className="text-red-400/60 hover:text-red-400 ml-4">&times;</button>
         </div>
       )}
 
-      {/* Session complete banner */}
       {completion && (
         <div className={`rounded-xl px-5 py-4 ${
           completion.final_prediction === 1
@@ -400,7 +306,6 @@ export default function HomeWeb() {
         </div>
       )}
 
-      {/* Connection + prediction row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-1 flex flex-col gap-4" glow={isConnected ? 'green' : 'none'}>
           <div className="flex items-center gap-3">
@@ -549,7 +454,6 @@ export default function HomeWeb() {
         </Card>
       </div>
 
-      {/* Live metrics */}
       {isMonitoring && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard label="Windows" value={windowCount} unit="/ 100" accent="cyan" />
@@ -559,7 +463,6 @@ export default function HomeWeb() {
         </div>
       )}
 
-      {/* EEG Waveform */}
       <Card className="p-0 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-800/50 flex items-center justify-between">
           <div>
@@ -575,12 +478,11 @@ export default function HomeWeb() {
         </div>
       </Card>
 
-      {/* Past sessions */}
-        {pastSessions.length > 0 && (
+      {pastSessions.length > 0 && (
         <Card>
           <h2 className="text-sm font-semibold text-slate-200 mb-4">Recent Sessions</h2>
           <div className="space-y-2">
-            {pastSessions.slice(0, 5).map(s => (
+            {pastSessions.slice(0, 5).map((s) => (
               <div key={s.id} className="flex items-center justify-between rounded-xl bg-bg border border-gray-800/50 px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className={`h-2.5 w-2.5 rounded-full ${

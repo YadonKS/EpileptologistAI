@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
+import { MonitoringProvider } from './lib/monitoring'
 import Layout from './components/Layout'
 import HomeWeb from './views/web/HomeWeb'
 import Login from './views/web/Login'
@@ -31,15 +32,17 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Layout>
-          <Routes>
-            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
-            <Route path="/" element={<ProtectedRoute><HomeWeb /></ProtectedRoute>} />
-            <Route path="/data" element={<ProtectedRoute><DataDisplayPage /></ProtectedRoute>} />
-            <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
-          </Routes>
-        </Layout>
+        <MonitoringProvider>
+          <Layout>
+            <Routes>
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+              <Route path="/" element={<ProtectedRoute><HomeWeb /></ProtectedRoute>} />
+              <Route path="/data" element={<ProtectedRoute><DataDisplayPage /></ProtectedRoute>} />
+              <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
+            </Routes>
+          </Layout>
+        </MonitoringProvider>
       </AuthProvider>
     </BrowserRouter>
   )
