@@ -8,6 +8,7 @@ from receiver.fake_arduino_flow import fake_arduino_stream, get_last_window_is_s
 
 # Reads from .env when running via server.py, falls back to defaults
 USE_FAKE_ARDUINO = os.environ.get("USE_FAKE_ARDUINO", "true").lower() == "true"
+FAKE_REALTIME = os.environ.get("FAKE_REALTIME", "true").lower() == "true"
 
 PORT = os.environ.get("SERIAL_PORT", "COM3")
 BAUD = 115200
@@ -27,7 +28,7 @@ def get_window():
 
     if USE_FAKE_ARDUINO:
         if _fake_stream is None:
-            _fake_stream = fake_arduino_stream(N_CHANNELS, FS)
+            _fake_stream = fake_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
         stream = _fake_stream
     else:
         import serial
@@ -114,7 +115,7 @@ def assess_signal_quality(sample_count=256):
     if USE_FAKE_ARDUINO:
         global _fake_stream
         if _fake_stream is None:
-            _fake_stream = fake_arduino_stream(N_CHANNELS, FS)
+            _fake_stream = fake_arduino_stream(N_CHANNELS, FS, realtime=FAKE_REALTIME)
         stream = _fake_stream
     else:
         import serial
