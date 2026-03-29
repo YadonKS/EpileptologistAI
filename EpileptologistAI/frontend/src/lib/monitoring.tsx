@@ -15,6 +15,7 @@ interface MonitoringContextValue {
   backendError: string | null
   lastPrediction: ReturnType<typeof useEEGSocket>['lastPrediction']
   completion: ReturnType<typeof useEEGSocket>['completion']
+  elapsedSeconds: number
   isConnected: boolean
   isMonitoring: boolean
   connectDevice: () => Promise<void>
@@ -36,7 +37,9 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [signalQualityMessage, setSignalQualityMessage] = useState<string | null>(null)
   const [backendError, setBackendError] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const sessionIdRef = useRef<string | null>(null)
+  const monitoringStartedAtMsRef = useRef<number | null>(null)
 
   const { lastPrediction, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
 
@@ -52,9 +55,32 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setSignalQualityMessage(null)
       setBackendError(null)
       setSessionId(null)
+      setElapsedSeconds(0)
       sessionIdRef.current = null
+      monitoringStartedAtMsRef.current = null
     }
   }, [user])
+
+  useEffect(() => {
+    if ((monitoringStatus !== 'starting' && monitoringStatus !== 'running') || monitoringStartedAtMsRef.current === null) {
+      return
+    }
+
+    const tick = () => {
+      if (monitoringStartedAtMsRef.current === null) return
+      setElapsedSeconds(Math.floor((Date.now() - monitoringStartedAtMsRef.current) / 1000))
+    }
+
+    tick()
+    const timerId = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timerId)
+  }, [monitoringStatus])
+
+  useEffect(() => {
+    if (lastPrediction && (monitoringStatus === 'starting' || monitoringStatus === 'running')) {
+      setElapsedSeconds((prev) => Math.max(prev, lastPrediction.elapsed_seconds))
+    }
+  }, [lastPrediction, monitoringStatus])
 
   useEffect(() => {
     if (wsConnected && monitoringStatus === 'starting') {
@@ -64,6 +90,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (completion) {
+      setElapsedSeconds(completion.total_windows * 6)
+      monitoringStartedAtMsRef.current = null
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
@@ -73,6 +101,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (wsError) {
       setBackendError(wsError)
+      monitoringStartedAtMsRef.current = null
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
@@ -85,16 +114,21 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
   const stopMonitoringInternal = useCallback(async () => {
     if (!sessionIdRef.current) {
+      monitoringStartedAtMsRef.current = null
       setMonitoringStatus('idle')
       return
     }
 
     wsCancel()
     await stopSession(sessionIdRef.current).catch(console.error)
+    if (lastPrediction) {
+      setElapsedSeconds(lastPrediction.elapsed_seconds)
+    }
+    monitoringStartedAtMsRef.current = null
     setMonitoringStatus('idle')
     setSessionId(null)
     sessionIdRef.current = null
-  }, [wsCancel])
+  }, [lastPrediction, wsCancel])
 
   const connectDevice = useCallback(async () => {
     if (!user) return
@@ -137,6 +171,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     setSignalQualityState('unchecked')
     setSignalQualityScore(null)
     setSignalQualityMessage(null)
+    setElapsedSeconds(0)
   }, [stopMonitoringInternal])
 
   const checkSignalQuality = useCallback(async () => {
@@ -172,6 +207,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     if (!user || !isConnected || monitoringStatus !== 'idle' || signalQualityState !== 'good') return
 
     setBackendError(null)
+    monitoringStartedAtMsRef.current = Date.now()
+    setElapsedSeconds(0)
     setMonitoringStatus('starting')
 
     try {
@@ -193,6 +230,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     backendError,
     lastPrediction,
     completion,
+    elapsedSeconds,
     isConnected,
     isMonitoring,
     connectDevice,
@@ -209,6 +247,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     connectDevice,
     connectionStatus,
     disconnectDevice,
+    elapsedSeconds,
     isConnected,
     isMonitoring,
     lastPrediction,

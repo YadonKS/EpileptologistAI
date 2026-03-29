@@ -16,8 +16,6 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export default function HomeWeb() {
   const { user, signOut } = useAuth()
   const [pastSessions, setPastSessions] = useState<SessionRecord[]>([])
-  const [monitoringStartedAtMs, setMonitoringStartedAtMs] = useState<number | null>(null)
-  const [displayElapsed, setDisplayElapsed] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<AccountSettings>(defaultAccountSettings)
   const [settingsDirty, setSettingsDirty] = useState(false)
@@ -35,6 +33,7 @@ export default function HomeWeb() {
     backendError,
     lastPrediction,
     completion,
+    elapsedSeconds,
     isConnected,
     isMonitoring,
     connectDevice,
@@ -49,51 +48,6 @@ export default function HomeWeb() {
   const prediction = lastPrediction
     ? { label: lastPrediction.prediction === 1 ? 'Seizure Detected' : 'No Seizure', proba: lastPrediction.probability }
     : null
-
-  useEffect(() => {
-    if (monitoringStatus === 'starting') {
-      setMonitoringStartedAtMs(Date.now())
-      setDisplayElapsed(0)
-    }
-  }, [monitoringStatus])
-
-  useEffect(() => {
-    if ((monitoringStatus !== 'starting' && monitoringStatus !== 'running') || monitoringStartedAtMs === null) {
-      return
-    }
-
-    const tick = () => {
-      setDisplayElapsed(Math.floor((Date.now() - monitoringStartedAtMs) / 1000))
-    }
-
-    tick()
-    const timerId = window.setInterval(tick, 1000)
-    return () => window.clearInterval(timerId)
-  }, [monitoringStatus, monitoringStartedAtMs])
-
-  useEffect(() => {
-    if (lastPrediction && (monitoringStatus === 'starting' || monitoringStatus === 'running')) {
-      // Keep UI timer from drifting behind backend-reported elapsed seconds.
-      setDisplayElapsed((prev) => Math.max(prev, lastPrediction.elapsed_seconds))
-    }
-  }, [lastPrediction, monitoringStatus])
-
-  useEffect(() => {
-    if (monitoringStatus !== 'idle') return
-
-    setMonitoringStartedAtMs(null)
-    if (completion?.total_windows) {
-      setDisplayElapsed(completion.total_windows * 6)
-      return
-    }
-
-    if (lastPrediction) {
-      setDisplayElapsed(lastPrediction.elapsed_seconds)
-      return
-    }
-
-    setDisplayElapsed(0)
-  }, [monitoringStatus, completion, lastPrediction])
 
   useEffect(() => {
     if (!user) return
@@ -137,8 +91,8 @@ export default function HomeWeb() {
   }
 
   const progress = Math.min((windowCount / 100) * 100, 100)
-  const minutes = Math.floor(displayElapsed / 60)
-  const seconds = displayElapsed % 60
+  const minutes = Math.floor(elapsedSeconds / 60)
+  const seconds = elapsedSeconds % 60
   const emergencyContactTrimmed = settings.emergencyContact.trim()
   const emergencyContactInvalid =
     emergencyContactTrimmed.length > 0 && !EMAIL_REGEX.test(emergencyContactTrimmed)
