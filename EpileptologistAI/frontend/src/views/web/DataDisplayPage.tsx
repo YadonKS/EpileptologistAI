@@ -38,6 +38,7 @@ interface CachedRunWindow {
 interface CachedLastRun {
   sessionId: string
   runStartedAt?: string | null
+  completedAt?: string | null
   windows: CachedRunWindow[]
 }
 
@@ -46,18 +47,19 @@ function formatDateTime(iso: string) {
   return d.toLocaleString()
 }
 
-function loadCachedLastRun(): HistoryPoint[] | null {
+function loadCachedLastRun(): { points: HistoryPoint[]; completedAtMs: number } | null {
   try {
     const raw = localStorage.getItem(LAST_RUN_STORAGE_KEY)
     if (!raw) return null
 
     const parsed = JSON.parse(raw) as CachedLastRun
+    if (!parsed?.completedAt) return null
     const windows = Array.isArray(parsed?.windows) ? parsed.windows.slice(0, HISTORY_WINDOWS) : []
     if (!windows.length) return null
 
     const runStartedAt = parsed.runStartedAt ? new Date(parsed.runStartedAt) : new Date(Date.now() - windows.length * WINDOW_DURATION_SEC * 1000)
 
-    return windows.map((p, idx) => {
+    const points = windows.map((p, idx) => {
       const windowNumber = typeof p.window === 'number' ? p.window : idx + 1
       const start = new Date(runStartedAt.getTime() + (windowNumber - 1) * WINDOW_DURATION_SEC * 1000)
       const end = new Date(start.getTime() + WINDOW_DURATION_SEC * 1000)
@@ -68,10 +70,13 @@ function loadCachedLastRun(): HistoryPoint[] | null {
         startedAt: start.toISOString(),
         endedAt: end.toISOString(),
         capturedAt: end.toISOString(),
-        source: 'session',
+        source: 'session' as const,
         sessionId: parsed.sessionId,
       }
     })
+
+    const completedAtMs = parsed.completedAt ? Date.parse(parsed.completedAt) : runStartedAt.getTime()
+    return { points, completedAtMs: Number.isFinite(completedAtMs) ? completedAtMs : runStartedAt.getTime() }
   } catch {
     return null
   }
@@ -126,7 +131,7 @@ export default function DataDisplayPage() {
     const loadHistory = async () => {
       if (!user) {
         const cached = loadCachedLastRun()
-        setHistory(cached ?? generateHistory(HISTORY_WINDOWS))
+        setHistory(cached?.points ?? generateHistory(HISTORY_WINDOWS))
         setActiveSession(null)
         return
       }
@@ -141,7 +146,7 @@ export default function DataDisplayPage() {
         if (!latestSession) {
           if (!cancelled) {
             const cached = loadCachedLastRun()
-            setHistory(cached ?? [])
+            setHistory(cached?.points ?? [])
             setHistoryError(cached ? 'Showing your most recent local run.' : 'No previous run data found for this account yet.')
             setActiveSession(null)
           }
@@ -153,7 +158,7 @@ export default function DataDisplayPage() {
         if (!predictions.length) {
           if (!cancelled) {
             const cached = loadCachedLastRun()
-            setHistory(cached ?? [])
+            setHistory(cached?.points ?? [])
             setHistoryError(cached ? 'Showing your most recent local run.' : 'No prediction rows were found for your latest session.')
             setActiveSession(latestSession)
           }
@@ -180,15 +185,25 @@ export default function DataDisplayPage() {
             }
           })
 
+        const cached = loadCachedLastRun()
+        const sessionFreshnessMs = Date.parse(latestSession.ended_at ?? latestSession.started_at)
+        const useCached = !!cached && cached.completedAtMs > (Number.isFinite(sessionFreshnessMs) ? sessionFreshnessMs : 0)
+
         if (!cancelled) {
-          setHistory(points)
-          setActiveSession(latestSession)
+          if (useCached) {
+            setHistory(cached.points)
+            setActiveSession(null)
+            setHistoryError('Showing your most recent local run.')
+          } else {
+            setHistory(points)
+            setActiveSession(latestSession)
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
           const cached = loadCachedLastRun()
           setHistoryError(err?.message ?? (cached ? 'Could not load cloud history. Showing your most recent local run.' : 'Failed to load session history.'))
-          setHistory(cached ?? [])
+          setHistory(cached?.points ?? [])
           setActiveSession(null)
         }
       } finally {

@@ -15,6 +15,7 @@ _WINDOWS_PER_SESSION = 100
 _seizure_windows = set()
 _normal_data = None
 _seizure_data = None
+_last_window_is_seizure = None
 
 
 def _load_real_samples():
@@ -60,9 +61,12 @@ def fake_arduino_stream(n_channels, fs, realtime=False):
 
     window_index = 0
 
+    global _last_window_is_seizure
+
     while True:
         schedule_index = window_index % _WINDOWS_PER_SESSION
         is_seizure = schedule_index in _seizure_windows
+        _last_window_is_seizure = bool(is_seizure)
 
         if is_seizure:
             # Pick a random real seizure window
@@ -81,3 +85,8 @@ def fake_arduino_stream(n_channels, fs, realtime=False):
                 time.sleep(1 / fs)
 
         window_index += 1
+
+
+def get_last_window_is_seizure():
+    """Return class label for the most recently streamed fake window."""
+    return _last_window_is_seizure

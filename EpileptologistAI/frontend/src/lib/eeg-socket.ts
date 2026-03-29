@@ -49,11 +49,28 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
   useEffect(() => {
     if (!sessionId) return
 
+    const persistCache = (completedAt: string | null) => {
+      try {
+        localStorage.setItem(
+          LAST_RUN_STORAGE_KEY,
+          JSON.stringify({
+            sessionId,
+            runStartedAt: runStartedAtRef.current,
+            completedAt,
+            windows: predictionHistoryRef.current,
+          })
+        )
+      } catch {
+        // ignore storage failures (private mode/quota)
+      }
+    }
+
     setLastPrediction(null)
     setCompletion(null)
     setError(null)
     runStartedAtRef.current = new Date().toISOString()
     predictionHistoryRef.current = []
+    persistCache(null)
 
     const ws = new WebSocket(`${WS_BASE}/api/ws/${sessionId}`)
     wsRef.current = ws
@@ -64,22 +81,10 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
       const data: WSMessage = JSON.parse(event.data)
       if (data.type === 'prediction') {
         predictionHistoryRef.current.push(data)
+        persistCache(null)
         setLastPrediction(data)
       } else if (data.type === 'complete') {
-        try {
-          localStorage.setItem(
-            LAST_RUN_STORAGE_KEY,
-            JSON.stringify({
-              sessionId,
-              runStartedAt: runStartedAtRef.current,
-              completedAt: new Date().toISOString(),
-              totalWindows: data.total_windows,
-              windows: predictionHistoryRef.current,
-            })
-          )
-        } catch {
-          // ignore storage failures (private mode/quota)
-        }
+        persistCache(new Date().toISOString())
         setCompletion(data)
       } else if (data.type === 'error') {
         setError(data.message)

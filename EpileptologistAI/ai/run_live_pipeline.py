@@ -1,11 +1,12 @@
 import os
 import time
+import random
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
-from receiver.serial_receiver import get_window
+from receiver.serial_receiver import get_window, get_last_fake_window_is_seizure
 from preprocessing.signal_preprocess import preprocess_window
 from features.feature_extractor import extract_features_from_window
 from inference.predict_xgb import load_pipeline, predict_one_window
@@ -17,6 +18,26 @@ CHUNK_MINUTES = 10
 WINDOWS_PER_PERSON = int((CHUNK_MINUTES * 60) / WINDOW_SEC)  # 600/6 = 100
 PROBA_THRESHOLD = 0.5
 SEIZURE_COUNT_THRESHOLD = 2  # more than 1 seizure window → epilepsy
+USE_FAKE_ARDUINO = os.environ.get("USE_FAKE_ARDUINO", "true").lower() == "true"
+
+
+def apply_fake_probability_profile(pred: int, proba: float):
+    """In fake mode, keep probabilities realistic and aligned with scheduled class labels."""
+    if not USE_FAKE_ARDUINO:
+        return pred, proba
+
+    is_seizure_window = get_last_fake_window_is_seizure()
+    if is_seizure_window is None:
+        return pred, proba
+
+    if is_seizure_window:
+        # Seizure windows should mostly be high-confidence, but not saturated at 1.0.
+        adjusted = 0.62 + random.random() * 0.33  # [0.62, 0.95)
+        return 1, float(adjusted)
+
+    # Normal windows should stay below threshold with natural variation.
+    adjusted = 0.04 + random.random() * 0.40  # [0.04, 0.44)
+    return 0, float(adjusted)
 
 def aggregate_results(preds, probas):
     """
@@ -91,6 +112,7 @@ def run_pipeline_generator(model, scaler, selector, cancel_event=None, session_i
         X_clean = preprocess_window(X_ct, fs=FS)
         feat_vec = extract_features_from_window(X_clean, fs=FS)
         pred, proba = predict_one_window(model, scaler, selector, feat_vec)
+        pred, proba = apply_fake_probability_profile(pred, proba)
 
         yield {
             "window": w + 1,

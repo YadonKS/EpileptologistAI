@@ -4,7 +4,7 @@ import numpy as np
 
 from receiver.line_parser import parse_line_to_sample
 from receiver.window_builder import build_window
-from receiver.fake_arduino_flow import fake_arduino_stream
+from receiver.fake_arduino_flow import fake_arduino_stream, get_last_window_is_seizure
 
 # Reads from .env when running via server.py, falls back to defaults
 USE_FAKE_ARDUINO = os.environ.get("USE_FAKE_ARDUINO", "true").lower() == "true"
@@ -167,6 +167,13 @@ def reset_fake_stream():
     global _fake_stream, _quality_mock_index
     _fake_stream = None
     _quality_mock_index = 0
+
+
+def get_last_fake_window_is_seizure():
+    """Expose current fake-window class label for mock-mode post-processing."""
+    if not USE_FAKE_ARDUINO:
+        return None
+    return get_last_window_is_seizure()
 
 
 # test
