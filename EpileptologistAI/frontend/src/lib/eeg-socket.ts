@@ -27,6 +27,8 @@ export interface ErrorMessage {
 
 export type WSMessage = PredictionMessage | CompleteMessage | ErrorMessage
 
+const LAST_RUN_STORAGE_KEY = 'eeg:lastRun'
+
 interface UseEEGSocketReturn {
   lastPrediction: PredictionMessage | null
   completion: CompleteMessage | null
@@ -37,6 +39,8 @@ interface UseEEGSocketReturn {
 
 export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
   const wsRef = useRef<WebSocket | null>(null)
+  const runStartedAtRef = useRef<string | null>(null)
+  const predictionHistoryRef = useRef<PredictionMessage[]>([])
   const [lastPrediction, setLastPrediction] = useState<PredictionMessage | null>(null)
   const [completion, setCompletion] = useState<CompleteMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +52,8 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     setLastPrediction(null)
     setCompletion(null)
     setError(null)
+    runStartedAtRef.current = new Date().toISOString()
+    predictionHistoryRef.current = []
 
     const ws = new WebSocket(`${WS_BASE}/api/ws/${sessionId}`)
     wsRef.current = ws
@@ -57,8 +63,23 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     ws.onmessage = (event) => {
       const data: WSMessage = JSON.parse(event.data)
       if (data.type === 'prediction') {
+        predictionHistoryRef.current.push(data)
         setLastPrediction(data)
       } else if (data.type === 'complete') {
+        try {
+          localStorage.setItem(
+            LAST_RUN_STORAGE_KEY,
+            JSON.stringify({
+              sessionId,
+              runStartedAt: runStartedAtRef.current,
+              completedAt: new Date().toISOString(),
+              totalWindows: data.total_windows,
+              windows: predictionHistoryRef.current,
+            })
+          )
+        } catch {
+          // ignore storage failures (private mode/quota)
+        }
         setCompletion(data)
       } else if (data.type === 'error') {
         setError(data.message)
