@@ -23,7 +23,7 @@ load_dotenv()
 # ── ML pipeline imports (lazy so .env is loaded first) ──
 from inference.predict_xgb import load_pipeline
 from run_live_pipeline import run_pipeline_generator
-from receiver.serial_receiver import reset_fake_stream
+from receiver.serial_receiver import reset_fake_stream, assess_signal_quality
 
 import supabase_client as db
 
@@ -66,6 +66,11 @@ class StartResponse(BaseModel):
 class StopRequest(BaseModel):
     session_id: str
 
+class SignalQualityResponse(BaseModel):
+    status: str
+    score: float
+    details: dict
+
 
 @app.post("/api/session/start", response_model=StartResponse)
 async def start_session(req: StartRequest):
@@ -103,6 +108,11 @@ async def stop_session(req: StopRequest):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "model_loaded": _model is not None}
+
+
+@app.get("/api/device/signal-quality", response_model=SignalQualityResponse)
+async def get_signal_quality():
+    return SignalQualityResponse(**assess_signal_quality())
 
 
 # ── WebSocket endpoint ──

@@ -16,6 +16,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export default function HomeWeb() {
   const { user, signOut } = useAuth()
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [monitoringStatus, setMonitoringStatus] = useState<'idle' | 'starting' | 'running'>('idle')
+  const [signalQualityState, setSignalQualityState] = useState<'unchecked' | 'checking' | 'good' | 'poor'>('unchecked')
+  const [signalQualityScore, setSignalQualityScore] = useState<number | null>(null)
+  const [signalQualityMessage, setSignalQualityMessage] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [pastSessions, setPastSessions] = useState<SessionRecord[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
@@ -31,6 +35,7 @@ export default function HomeWeb() {
   const { lastPrediction, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
 
   const isConnected = connectionStatus === 'connected'
+  const isMonitoring = monitoringStatus === 'running'
   const windowCount = lastPrediction?.window ?? 0
   const elapsed = lastPrediction?.elapsed_seconds ?? 0
   const prediction = lastPrediction
@@ -54,15 +59,15 @@ export default function HomeWeb() {
 
   // Update status when WebSocket connects
   useEffect(() => {
-    if (wsConnected && connectionStatus === 'connecting') {
-      setConnectionStatus('connected')
+    if (wsConnected && monitoringStatus === 'starting') {
+      setMonitoringStatus('running')
     }
-  }, [wsConnected, connectionStatus])
+  }, [wsConnected, monitoringStatus])
 
   // Handle completion
   useEffect(() => {
     if (completion) {
-      setConnectionStatus('disconnected')
+      setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
     }
@@ -72,7 +77,9 @@ export default function HomeWeb() {
   useEffect(() => {
     if (wsError) {
       setBackendError(wsError)
-      setConnectionStatus('disconnected')
+      setMonitoringStatus('idle')
+      setSessionId(null)
+      sessionIdRef.current = null
     }
   }, [wsError])
 
@@ -85,13 +92,17 @@ export default function HomeWeb() {
   const handleConnect = async () => {
     if (isConnected) {
       // Disconnect
-      wsCancel()
       if (sessionIdRef.current) {
+        wsCancel()
         await stopSession(sessionIdRef.current).catch(console.error)
+        setMonitoringStatus('idle')
+        setSessionId(null)
+        sessionIdRef.current = null
       }
       setConnectionStatus('disconnected')
-      setSessionId(null)
-      sessionIdRef.current = null
+      setSignalQualityState('unchecked')
+      setSignalQualityScore(null)
+      setSignalQualityMessage(null)
       return
     }
 
@@ -99,13 +110,75 @@ export default function HomeWeb() {
     setConnectionStatus('connecting')
 
     try {
-      const sid = await startSession(user!.id)
-      sessionIdRef.current = sid
-      setSessionId(sid) // triggers WebSocket connection
+      const res = await fetch('http://localhost:8000/api/health')
+      if (!res.ok) {
+        throw new Error('Backend not available')
+      }
+      setConnectionStatus('connected')
+      setSignalQualityState('unchecked')
+      setSignalQualityScore(null)
+      setSignalQualityMessage('Run signal quality check before starting monitoring.')
     } catch (err: any) {
-      setBackendError('Backend not available. Make sure the Python server is running.')
+      setBackendError('Could not connect to the EEG service. Make sure the Python server is running.')
       setConnectionStatus('disconnected')
     }
+  }
+
+  const handleCheckSignalQuality = async () => {
+    if (!isConnected || isMonitoring || monitoringStatus === 'starting') return
+
+    setSignalQualityState('checking')
+    setSignalQualityMessage('Checking signal quality...')
+
+    try {
+      const res = await fetch('http://localhost:8000/api/device/signal-quality')
+      if (!res.ok) {
+        throw new Error('Signal quality check failed')
+      }
+      const data = await res.json()
+      const score = typeof data?.score === 'number' ? data.score : null
+      const status = data?.status === 'good' ? 'good' : 'poor'
+
+      setSignalQualityScore(score)
+      setSignalQualityState(status)
+      setSignalQualityMessage(
+        status === 'good'
+          ? 'Signal quality is good. You can start monitoring.'
+          : 'Signal quality is poor. Re-seat the cap and check electrodes, then retry.'
+      )
+    } catch {
+      setSignalQualityState('poor')
+      setSignalQualityScore(null)
+      setSignalQualityMessage('Could not evaluate signal quality. Please try again.')
+    }
+  }
+
+  const handleStartMonitoring = async () => {
+    if (!user || !isConnected || monitoringStatus !== 'idle') return
+
+    setBackendError(null)
+    setMonitoringStatus('starting')
+
+    try {
+      const sid = await startSession(user.id)
+      sessionIdRef.current = sid
+      setSessionId(sid)
+    } catch (err: any) {
+      setBackendError('Monitoring could not start. Please try again.')
+      setMonitoringStatus('idle')
+    }
+  }
+
+  const handleStopMonitoring = async () => {
+    if (!sessionIdRef.current) {
+      setMonitoringStatus('idle')
+      return
+    }
+    wsCancel()
+    await stopSession(sessionIdRef.current).catch(console.error)
+    setMonitoringStatus('idle')
+    setSessionId(null)
+    sessionIdRef.current = null
   }
 
   const progress = Math.min((windowCount / 100) * 100, 100)
@@ -352,6 +425,60 @@ export default function HomeWeb() {
           </Button>
 
           {isConnected && (
+            <Button
+              onClick={isMonitoring || monitoringStatus === 'starting' ? handleStopMonitoring : handleStartMonitoring}
+              disabled={monitoringStatus === 'starting' || (!isMonitoring && signalQualityState !== 'good')}
+              variant={isMonitoring ? 'danger' : 'outline'}
+              className="w-full"
+            >
+              {monitoringStatus === 'starting'
+                ? 'Starting Monitoring...'
+                : isMonitoring
+                ? 'Stop Monitoring'
+                : 'Start Monitoring'}
+            </Button>
+          )}
+
+          {isConnected && monitoringStatus === 'idle' && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleCheckSignalQuality}
+                disabled={signalQualityState === 'checking'}
+              >
+                {signalQualityState === 'checking' ? 'Checking Signal Quality...' : 'Check Signal Quality'}
+              </Button>
+
+              <div className="rounded-lg border border-gray-800/70 bg-gray-900/40 px-3 py-2">
+                <p className="text-xs text-slate-500">Signal quality status</p>
+                <p className={`text-sm font-semibold mt-0.5 ${
+                  signalQualityState === 'good'
+                    ? 'text-emerald-400'
+                    : signalQualityState === 'poor'
+                    ? 'text-amber-400'
+                    : signalQualityState === 'checking'
+                    ? 'text-cyan-400'
+                    : 'text-slate-300'
+                }`}>
+                  {signalQualityState === 'good'
+                    ? 'Good'
+                    : signalQualityState === 'poor'
+                    ? 'Poor'
+                    : signalQualityState === 'checking'
+                    ? 'Checking...'
+                    : 'Unchecked'}
+                  {signalQualityScore !== null ? ` (${signalQualityScore.toFixed(1)} / 100)` : ''}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {signalQualityMessage ?? 'Run quality check before monitoring.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(isMonitoring || monitoringStatus === 'starting') && (
             <div className="space-y-3">
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
@@ -412,14 +539,18 @@ export default function HomeWeb() {
             </div>
           ) : (
             <div className="h-20 flex items-center justify-center text-slate-600 text-sm">
-              Connect a device to start monitoring
+              {!isConnected
+                ? 'Connect a device to prepare monitoring'
+                : monitoringStatus === 'idle'
+                ? 'Device connected. Press Start Monitoring to begin detection.'
+                : 'Preparing live monitoring...'}
             </div>
           )}
         </Card>
       </div>
 
       {/* Live metrics */}
-      {isConnected && (
+      {isMonitoring && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard label="Windows" value={windowCount} unit="/ 100" accent="cyan" />
           <MetricCard label="Sampling Rate" value="256" unit="Hz" accent="green" />
@@ -440,7 +571,7 @@ export default function HomeWeb() {
           </Link>
         </div>
         <div className="p-3">
-          <EEGWaveform channels={6} height={340} speed={isConnected ? 2 : 0.5} paused={connectionStatus === 'disconnected'} />
+          <EEGWaveform channels={6} height={340} speed={isMonitoring ? 2 : 0.5} paused={!isMonitoring} />
         </div>
       </Card>
 

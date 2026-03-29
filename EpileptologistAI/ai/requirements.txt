@@ -1,6 +1,6 @@
 numpy
 scipy
-pywt
+PyWavelets
 scikit-learn
 xgboost
 joblib

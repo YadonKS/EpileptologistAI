@@ -1,5 +1,6 @@
 import os
 import time
+import numpy as np
 
 from receiver.line_parser import parse_line_to_sample
 from receiver.window_builder import build_window
@@ -52,6 +53,61 @@ def get_window():
             if not USE_FAKE_ARDUINO:
                 ser.close()
             return X_tc, X_ct
+
+
+def assess_signal_quality(sample_count=256):
+    """Collect a short sample and return a coarse signal quality estimate."""
+    rows = []
+
+    if USE_FAKE_ARDUINO:
+        global _fake_stream
+        if _fake_stream is None:
+            _fake_stream = fake_arduino_stream(N_CHANNELS, FS)
+        stream = _fake_stream
+    else:
+        import serial
+        ser = serial.Serial(PORT, BAUD, timeout=1)
+        time.sleep(1.5)
+
+    while len(rows) < sample_count:
+        if USE_FAKE_ARDUINO:
+            line = next(stream)
+        else:
+            line = ser.readline().decode(errors="ignore").strip()
+            if not line:
+                continue
+
+        sample = parse_line_to_sample(line, N_CHANNELS)
+        if sample is None:
+            continue
+        rows.append(sample)
+
+    if not USE_FAKE_ARDUINO:
+        ser.close()
+
+    arr = np.asarray(rows, dtype=np.float32)  # (samples, channels)
+    std_per_channel = np.std(arr, axis=0)
+    variability_ok = float(np.mean((std_per_channel >= 0.5) & (std_per_channel <= 5000.0)))
+
+    diffs = np.abs(np.diff(arr, axis=0))
+    flatline_ratio = float(np.mean(diffs < 1e-3))
+    saturation_ratio = float(np.mean(np.abs(arr) > 5000.0))
+
+    score = (variability_ok * 100.0) - (flatline_ratio * 100.0) - (saturation_ratio * 200.0)
+    score = max(0.0, min(100.0, score))
+
+    status = "good" if (score >= 70.0 and variability_ok >= 0.8 and flatline_ratio < 0.2) else "poor"
+    return {
+        "status": status,
+        "score": round(score, 1),
+        "details": {
+            "variability_ok_ratio": round(variability_ok, 3),
+            "flatline_ratio": round(flatline_ratio, 3),
+            "saturation_ratio": round(saturation_ratio, 3),
+            "samples_checked": int(sample_count),
+            "channels": N_CHANNELS,
+        },
+    }
 
 
 def reset_fake_stream():
