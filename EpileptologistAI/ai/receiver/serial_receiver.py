@@ -18,6 +18,7 @@ SAMPLES_PER_WINDOW = FS * WINDOW_SEC  # 1536
 
 # Persistent fake stream so seizure schedule survives across get_window() calls
 _fake_stream = None
+_quality_mock_index = 0
 
 
 def get_window():
@@ -57,6 +58,57 @@ def get_window():
 
 def assess_signal_quality(sample_count=256):
     """Collect a short sample and return a coarse signal quality estimate."""
+    global _quality_mock_index
+
+    if USE_FAKE_ARDUINO:
+        mock_mode = os.environ.get("FAKE_SIGNAL_QUALITY_MODE", "fail-then-pass").strip().lower()
+        if mock_mode == "always-poor":
+            return {
+                "status": "poor",
+                "score": 32.0,
+                "details": {
+                    "mock_mode": mock_mode,
+                    "samples_checked": int(sample_count),
+                    "channels": N_CHANNELS,
+                },
+            }
+        if mock_mode == "always-good":
+            return {
+                "status": "good",
+                "score": 92.0,
+                "details": {
+                    "mock_mode": mock_mode,
+                    "samples_checked": int(sample_count),
+                    "channels": N_CHANNELS,
+                },
+            }
+        if mock_mode == "toggle":
+            _quality_mock_index += 1
+            is_good = (_quality_mock_index % 2 == 0)
+            return {
+                "status": "good" if is_good else "poor",
+                "score": 90.0 if is_good else 35.0,
+                "details": {
+                    "mock_mode": mock_mode,
+                    "check_index": _quality_mock_index,
+                    "samples_checked": int(sample_count),
+                    "channels": N_CHANNELS,
+                },
+            }
+        if mock_mode == "fail-then-pass":
+            _quality_mock_index += 1
+            is_good = _quality_mock_index >= 2
+            return {
+                "status": "good" if is_good else "poor",
+                "score": 91.0 if is_good else 28.0,
+                "details": {
+                    "mock_mode": mock_mode,
+                    "check_index": _quality_mock_index,
+                    "samples_checked": int(sample_count),
+                    "channels": N_CHANNELS,
+                },
+            }
+
     rows = []
 
     if USE_FAKE_ARDUINO:
@@ -112,8 +164,9 @@ def assess_signal_quality(sample_count=256):
 
 def reset_fake_stream():
     """Reset the fake stream for a new session."""
-    global _fake_stream
+    global _fake_stream, _quality_mock_index
     _fake_stream = None
+    _quality_mock_index = 0
 
 
 # test

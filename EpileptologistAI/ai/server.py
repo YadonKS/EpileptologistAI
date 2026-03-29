@@ -112,7 +112,15 @@ async def health():
 
 @app.get("/api/device/signal-quality", response_model=SignalQualityResponse)
 async def get_signal_quality():
+    await asyncio.sleep(2)
     return SignalQualityResponse(**assess_signal_quality())
+
+
+@app.post("/api/device/signal-quality/reset")
+async def reset_signal_quality_mock():
+    # In fake mode this resets fail/pass sequence index; in real mode it's a no-op.
+    reset_fake_stream()
+    return {"ok": True}
 
 
 # ── WebSocket endpoint ──

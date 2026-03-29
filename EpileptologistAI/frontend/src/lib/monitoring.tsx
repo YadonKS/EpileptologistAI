@@ -116,6 +116,11 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       if (!res.ok) {
         throw new Error('Backend not available')
       }
+
+      await fetch('http://localhost:8000/api/device/signal-quality/reset', {
+        method: 'POST',
+      }).catch(() => undefined)
+
       setConnectionStatus('connected')
       setSignalQualityState('unchecked')
       setSignalQualityScore(null)
