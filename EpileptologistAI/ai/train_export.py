@@ -24,7 +24,7 @@ SAMPLES_PER_CHANNEL = 1536
 SAMPLING_FREQ = 256
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
-KEEP_CHANNELS = [0, 1, 2, 12, 13, 22]  # 6 channels
+KEEP_CHANNELS = [0, 1, 2, 12, 13, 14]  # 6 channels: FP1-F7, F7-T7, T7-P7, FP2-F8, F8-T8, T8-P8
 
 #  Feature names 
 time_feats = ["mean", "std", "var", "rms", "abs_diff_sum", "ptp", "zero_crossings", "skew", "kurt"]
