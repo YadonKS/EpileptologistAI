@@ -5,13 +5,15 @@
  * comma-separated voltage values over USB serial at 256 Hz.
  *
  * Hardware layout:
- *   PCB1 (4 channels) → Wire  (I2C0): SDA=D20/PB12, SCL=D21/PB13
- *   PCB2 (2 channels) → Wire1 (I2C1): SDA=PA17,     SCL=PA18
+ *   PCB1 (left):  FP1=CH0, F7=CH1, T7=CH2, P7=CH3  → Wire  (I2C0): SDA=D20, SCL=D21
+ *   PCB2 (right): FP2=CH0, F8=CH1, T8=CH2, P8=CH3  → Wire1 (I2C1): SDA=PA17, SCL=PA18
+ *   Reference: A1 (left mastoid) shared by both PCBs
  *   Both ADS7828 chips are at I2C address 0x48.
  *
  * Serial output format (115200 baud, 256 Hz):
- *   "ch1,ch2,ch3,ch4,ch5,ch6\n"
- *   Values are voltages in volts (0.0 – 3.3 V).
+ *   "FP1-F7, F7-T7, T7-P7, FP2-F8, F8-T8, T8-P8\n"
+ *   Bipolar differences matching dataset indices 0,1,2,12,13,14
+ *   Values in volts.
  *
  * ADS7828 command byte:
  *   [SD C2 C1 C0 0 PD1 PD0 0]
@@ -97,29 +99,33 @@ void loop() {
   }
   next_sample_us = now + SAMPLE_PERIOD_US;
 
-  // ── PCB1: channels 0–3 via Wire (I2C0) ──
-  int16_t raw0 = ads7828_read(Wire,  ADS7828_ADDR, 0);
-  int16_t raw1 = ads7828_read(Wire,  ADS7828_ADDR, 1);
-  int16_t raw2 = ads7828_read(Wire,  ADS7828_ADDR, 2);
-  int16_t raw3 = ads7828_read(Wire,  ADS7828_ADDR, 3);
+  // ── PCB1 (left): FP1=CH0, F7=CH1, T7=CH2, P7=CH3 via Wire (I2C0) ──
+  float fp1 = to_volts(ads7828_read(Wire,  ADS7828_ADDR, 0));
+  float f7  = to_volts(ads7828_read(Wire,  ADS7828_ADDR, 1));
+  float t7  = to_volts(ads7828_read(Wire,  ADS7828_ADDR, 2));
+  float p7  = to_volts(ads7828_read(Wire,  ADS7828_ADDR, 3));
 
-  // ── PCB2: channels 0–1 via Wire1 (I2C1) ──
-  int16_t raw4 = ads7828_read(Wire1, ADS7828_ADDR, 0);
-  int16_t raw5 = ads7828_read(Wire1, ADS7828_ADDR, 1);
+  // ── PCB2 (right): FP2=CH0, F8=CH1, T8=CH2, P8=CH3 via Wire1 (I2C1) ──
+  float fp2 = to_volts(ads7828_read(Wire1, ADS7828_ADDR, 0));
+  float f8  = to_volts(ads7828_read(Wire1, ADS7828_ADDR, 1));
+  float t8  = to_volts(ads7828_read(Wire1, ADS7828_ADDR, 2));
+  float p8  = to_volts(ads7828_read(Wire1, ADS7828_ADDR, 3));
 
-  // Convert to volts
-  float v0 = to_volts(raw0);
-  float v1 = to_volts(raw1);
-  float v2 = to_volts(raw2);
-  float v3 = to_volts(raw3);
-  float v4 = to_volts(raw4);
-  float v5 = to_volts(raw5);
+  // ── Bipolar channels matching dataset indices ──
+  // idx0: FP1-F7, idx1: F7-T7, idx2: T7-P7
+  // idx12: FP2-F8, idx13: F8-T8, idx14: T8-P8
+  float ch0 = fp1 - f7;
+  float ch1 = f7  - t7;
+  float ch2 = t7  - p7;
+  float ch3 = fp2 - f8;
+  float ch4 = f8  - t8;
+  float ch5 = t8  - p8;
 
   // Stream CSV line at 115200 baud (format expected by serial_receiver.py)
-  Serial.print(v0, 6); Serial.print(',');
-  Serial.print(v1, 6); Serial.print(',');
-  Serial.print(v2, 6); Serial.print(',');
-  Serial.print(v3, 6); Serial.print(',');
-  Serial.print(v4, 6); Serial.print(',');
-  Serial.println(v5, 6);
+  Serial.print(ch0, 6); Serial.print(',');
+  Serial.print(ch1, 6); Serial.print(',');
+  Serial.print(ch2, 6); Serial.print(',');
+  Serial.print(ch3, 6); Serial.print(',');
+  Serial.print(ch4, 6); Serial.print(',');
+  Serial.println(ch5, 6);
 }

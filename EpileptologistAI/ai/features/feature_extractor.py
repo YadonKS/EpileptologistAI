@@ -62,7 +62,7 @@ def extract_frequency_domain_features(signal_window: np.ndarray, fs: int = 256) 
     band_powers = {}
     for name, (low, high) in bands.items():
         idx = (freqs >= low) & (freqs <= high)
-        band_powers[name] = np.trapz(psd[idx], freqs[idx])
+        band_powers[name] = np.trapezoid(psd[idx], freqs[idx])
 
     total = sum(band_powers.values()) + 1e-10
     rel = {k: v / total for k, v in band_powers.items()}

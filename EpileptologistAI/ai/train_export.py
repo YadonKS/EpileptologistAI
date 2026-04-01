@@ -82,7 +82,7 @@ def extract_frequency_domain_features(sig, fs=256):
     bp = {}
     for name, (lo, hi) in bands.items():
         idx = np.logical_and(freqs >= lo, freqs <= hi)
-        bp[name] = np.trapz(psd[idx], freqs[idx])
+        bp[name] = np.trapezoid(psd[idx], freqs[idx])
     total = sum(bp.values()) + 1e-10
     rel = {k: v / total for k, v in bp.items()}
     psd_norm = psd / (np.sum(psd) + 1e-10)

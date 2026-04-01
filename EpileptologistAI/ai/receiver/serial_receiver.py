@@ -157,16 +157,17 @@ def assess_signal_quality(sample_count=256):
 
     arr = np.asarray(rows, dtype=np.float32)  # (samples, channels)
     std_per_channel = np.std(arr, axis=0)
-    variability_ok = float(np.mean((std_per_channel >= 0.5) & (std_per_channel <= 5000.0)))
+    # Real hardware outputs in volts (bipolar differences ~0.0001–2.5 V)
+    variability_ok = float(np.mean((std_per_channel >= 0.0001) & (std_per_channel <= 5.0)))
 
     diffs = np.abs(np.diff(arr, axis=0))
-    flatline_ratio = float(np.mean(diffs < 1e-3))
-    saturation_ratio = float(np.mean(np.abs(arr) > 5000.0))
+    flatline_ratio = float(np.mean(diffs < 1e-5))
+    saturation_ratio = float(np.mean(np.abs(arr) > 5.0))
 
     score = (variability_ok * 100.0) - (flatline_ratio * 100.0) - (saturation_ratio * 200.0)
     score = max(0.0, min(100.0, score))
 
-    status = "good" if (score >= 70.0 and variability_ok >= 0.8 and flatline_ratio < 0.2) else "poor"
+    status = "good" if (score >= 60.0 and variability_ok >= 0.5 and flatline_ratio < 0.4) else "poor"
     return {
         "status": status,
         "score": round(score, 1),

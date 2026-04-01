@@ -78,7 +78,7 @@ export default function EEGWaveform({
           const playhead = (elapsedSec * 256) % sampleCount
           const samplesPerPixel = sampleCount / Math.max(w, 1)
           const maxAbs = Math.max(
-            1,
+            1e-9,
             ...streamedWindow.map((row) => Math.abs(Number(row?.[ch] ?? 0)))
           )
 
