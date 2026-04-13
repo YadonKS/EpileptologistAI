@@ -118,6 +118,9 @@ export default function DataDisplayPage() {
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [emailingReport, setEmailingReport] = useState(false)
+  const [emailNotice, setEmailNotice] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [selectedWindow, setSelectedWindow] = useState<HistoryPoint | null>(null)
   const [activeSession, setActiveSession] = useState<SessionRecord | null>(null)
 
@@ -126,6 +129,71 @@ export default function DataDisplayPage() {
     if (!history.length) return null
     return formatDateTime(history[0].startedAt)
   }, [history])
+  const avgProbability = useMemo(() => history.reduce((s, h) => s + h.proba, 0) / Math.max(history.length, 1), [history])
+  const flaggedWindows = useMemo(() => history.filter((h) => h.proba >= 0.5).length, [history])
+  const finalVerdict = flaggedWindows >= 2 ? 'Seizure Pattern' : 'No Seizure'
+
+  const sendAnalyticsEmail = async () => {
+    if (!user?.email) {
+      setEmailError('No recipient email found on your account.')
+      return
+    }
+    if (!history.length) {
+      setEmailError('No analytics data available to send yet.')
+      return
+    }
+
+    setEmailingReport(true)
+    setEmailError(null)
+    setEmailNotice(null)
+
+    try {
+      const payload = {
+        to_email: user.email,
+        user_name: (user.user_metadata?.full_name as string | undefined) ?? user.email,
+        session_id: activeSession?.id ?? history[0]?.sessionId ?? null,
+        collected_at: activeSession?.started_at ?? history[0]?.startedAt ?? null,
+        summary: {
+          total_windows: history.length,
+          avg_probability: avgProbability,
+          flagged_windows: flaggedWindows,
+          final_verdict: finalVerdict,
+        },
+        history: history.map((h) => ({
+          window: h.window,
+          probability: h.proba,
+          prediction: h.prediction,
+          started_at: h.startedAt,
+          ended_at: h.endedAt,
+          captured_at: h.capturedAt,
+        })),
+      }
+
+      const res = await fetch('http://127.0.0.1:8000/api/analytics/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        let message = 'Could not send analytics email.'
+        try {
+          const data = await res.json()
+          message = data?.detail ?? message
+        } catch {
+          const txt = await res.text()
+          if (txt) message = txt
+        }
+        throw new Error(message)
+      }
+
+      setEmailNotice(`Analytics report emailed to ${user.email}.`)
+    } catch (err: any) {
+      setEmailError(err?.message ?? 'Could not send analytics email.')
+    } finally {
+      setEmailingReport(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -335,12 +403,26 @@ export default function DataDisplayPage() {
           <Card>
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-sm font-semibold text-slate-200">Seizure Probability per Window</h2>
-              {(activeSession || collectedAtLabel) && (
-                <p className="text-xs text-slate-500">
-                  Collected: {activeSession ? formatDateTime(activeSession.started_at) : collectedAtLabel}
-                </p>
-              )}
+              <div className="flex items-center gap-2">
+                {(activeSession || collectedAtLabel) && (
+                  <p className="text-xs text-slate-500">
+                    Collected: {activeSession ? formatDateTime(activeSession.started_at) : collectedAtLabel}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={sendAnalyticsEmail}
+                  disabled={emailingReport || !history.length}
+                >
+                  {emailingReport ? 'Sending...' : 'Email Report'}
+                </Button>
+              </div>
             </div>
+
+            {emailNotice && <p className="text-xs text-emerald-400 mb-3">{emailNotice}</p>}
+            {emailError && <p className="text-xs text-amber-400 mb-3">{emailError}</p>}
 
             {historyLoading && (
               <p className="text-xs text-slate-500 mb-4">Loading prediction history...</p>
@@ -408,19 +490,19 @@ export default function DataDisplayPage() {
               <div>
                 <p className="text-xs text-slate-500">Avg Probability</p>
                 <p className="text-lg font-bold font-mono text-brand-400">
-                  {(history.reduce((s, h) => s + h.proba, 0) / Math.max(history.length, 1)).toFixed(3)}
+                  {avgProbability.toFixed(3)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Flagged Windows</p>
                 <p className="text-lg font-bold font-mono text-red-400">
-                  {history.filter((h) => h.proba >= 0.5).length}
+                  {flaggedWindows}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Final Verdict</p>
-                <p className={`text-lg font-bold ${history.filter((h) => h.proba >= 0.5).length >= 2 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {history.filter((h) => h.proba >= 0.5).length >= 2 ? 'Seizure Pattern' : 'No Seizure'}
+                <p className={`text-lg font-bold ${flaggedWindows >= 2 ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {finalVerdict}
                 </p>
               </div>
             </div>
