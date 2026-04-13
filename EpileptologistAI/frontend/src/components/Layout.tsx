@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
 import BrandLogo from './BrandLogo'
+import InAppAlerts from './InAppAlerts'
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -23,6 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
         {children}
       </main>
+      <InAppAlerts />
       <footer className="border-t border-gray-800/50 bg-surface/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <p className="text-xs text-slate-600">

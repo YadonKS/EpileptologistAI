@@ -43,6 +43,7 @@ export default function HomeWeb() {
     stopMonitoring,
     checkSignalQuality,
     clearBackendError,
+    setInAppAlertsEnabled,
   } = useMonitoring()
 
   const windowCount = lastPrediction?.window ?? 0
@@ -99,6 +100,9 @@ export default function HomeWeb() {
     emergencyContactTrimmed.length > 0 && !EMAIL_REGEX.test(emergencyContactTrimmed)
 
   const onSettingChange = (patch: Partial<AccountSettings>) => {
+    if (Object.prototype.hasOwnProperty.call(patch, 'inAppAlerts')) {
+      setInAppAlertsEnabled(Boolean(patch.inAppAlerts))
+    }
     setSettings((prev) => ({ ...prev, ...patch }))
     setSettingsDirty(true)
     setSettingsNotice(null)

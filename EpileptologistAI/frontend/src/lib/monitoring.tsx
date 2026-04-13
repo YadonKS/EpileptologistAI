@@ -1,10 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './auth'
 import { useEEGSocket, startSession, stopSession } from './eeg-socket'
+import { defaultAccountSettings, getAccountSettings } from './accountSettings'
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 type MonitoringStatus = 'idle' | 'starting' | 'running'
 type SignalQualityState = 'unchecked' | 'checking' | 'good' | 'poor'
+
+export interface MonitoringAlert {
+  id: string
+  window: number
+  probability: number
+}
 
 interface MonitoringContextValue {
   connectionStatus: ConnectionStatus
@@ -17,6 +24,8 @@ interface MonitoringContextValue {
   lastWindowData: ReturnType<typeof useEEGSocket>['lastWindowData']
   completion: ReturnType<typeof useEEGSocket>['completion']
   elapsedSeconds: number
+  inAppAlertsEnabled: boolean
+  alerts: MonitoringAlert[]
   isConnected: boolean
   isMonitoring: boolean
   connectDevice: () => Promise<void>
@@ -25,6 +34,8 @@ interface MonitoringContextValue {
   stopMonitoring: () => Promise<void>
   checkSignalQuality: () => Promise<void>
   clearBackendError: () => void
+  setInAppAlertsEnabled: (enabled: boolean) => void
+  dismissAlert: (id: string) => void
 }
 
 const MonitoringContext = createContext<MonitoringContextValue | undefined>(undefined)
@@ -39,8 +50,12 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [backendError, setBackendError] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [inAppAlertsEnabled, setInAppAlertsEnabled] = useState(defaultAccountSettings.inAppAlerts)
+  const [alerts, setAlerts] = useState<MonitoringAlert[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const monitoringStartedAtMsRef = useRef<number | null>(null)
+  const alertedWindowsRef = useRef<Set<number>>(new Set())
+  const alertTimeoutsRef = useRef<Map<string, number>>(new Map())
 
   const { lastPrediction, lastWindowData, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
 
@@ -57,10 +72,29 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setBackendError(null)
       setSessionId(null)
       setElapsedSeconds(0)
+      setAlerts([])
+      setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts)
       sessionIdRef.current = null
       monitoringStartedAtMsRef.current = null
+      alertedWindowsRef.current.clear()
+      alertTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
+      alertTimeoutsRef.current.clear()
+      return
     }
+
+    getAccountSettings(user.id, user.email)
+      .then((settings) => setInAppAlertsEnabled(settings.inAppAlerts))
+      .catch(() => setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts))
   }, [user])
+
+  const dismissAlert = useCallback((id: string) => {
+    const timeoutId = alertTimeoutsRef.current.get(id)
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      alertTimeoutsRef.current.delete(id)
+    }
+    setAlerts((prev) => prev.filter((alert) => alert.id !== id))
+  }, [])
 
   useEffect(() => {
     if ((monitoringStatus !== 'starting' && monitoringStatus !== 'running') || monitoringStartedAtMsRef.current === null) {
@@ -96,6 +130,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
+      alertedWindowsRef.current.clear()
     }
   }, [completion])
 
@@ -106,8 +141,30 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
+      alertedWindowsRef.current.clear()
     }
   }, [wsError])
+
+  useEffect(() => {
+    if (!isMonitoring || !inAppAlertsEnabled || !lastPrediction) return
+    if (lastPrediction.prediction !== 1) return
+    if (alertedWindowsRef.current.has(lastPrediction.window)) return
+
+    alertedWindowsRef.current.add(lastPrediction.window)
+
+    const id = `${lastPrediction.window}-${Date.now()}`
+    const nextAlert: MonitoringAlert = {
+      id,
+      window: lastPrediction.window,
+      probability: lastPrediction.probability,
+    }
+    setAlerts((prev) => [...prev.slice(-2), nextAlert])
+
+    const timeoutId = window.setTimeout(() => {
+      dismissAlert(id)
+    }, 8000)
+    alertTimeoutsRef.current.set(id, timeoutId)
+  }, [dismissAlert, inAppAlertsEnabled, isMonitoring, lastPrediction])
 
   const clearBackendError = useCallback(() => {
     setBackendError(null)
@@ -117,6 +174,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     if (!sessionIdRef.current) {
       monitoringStartedAtMsRef.current = null
       setMonitoringStatus('idle')
+      setAlerts([])
+      alertedWindowsRef.current.clear()
       return
     }
 
@@ -128,6 +187,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     monitoringStartedAtMsRef.current = null
     setMonitoringStatus('idle')
     setSessionId(null)
+    setAlerts([])
+    alertedWindowsRef.current.clear()
     sessionIdRef.current = null
   }, [lastPrediction, wsCancel])
 
@@ -210,6 +271,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     setBackendError(null)
     monitoringStartedAtMsRef.current = Date.now()
     setElapsedSeconds(0)
+    setAlerts([])
+    alertedWindowsRef.current.clear()
     setMonitoringStatus('starting')
 
     try {
@@ -233,6 +296,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     lastWindowData,
     completion,
     elapsedSeconds,
+    inAppAlertsEnabled,
+    alerts,
     isConnected,
     isMonitoring,
     connectDevice,
@@ -241,7 +306,10 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     stopMonitoring: stopMonitoringInternal,
     checkSignalQuality,
     clearBackendError,
+    setInAppAlertsEnabled,
+    dismissAlert,
   }), [
+    alerts,
     backendError,
     checkSignalQuality,
     clearBackendError,
@@ -250,6 +318,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     connectionStatus,
     disconnectDevice,
     elapsedSeconds,
+    inAppAlertsEnabled,
     isConnected,
     isMonitoring,
     lastPrediction,
@@ -260,6 +329,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     signalQualityState,
     startMonitoringFlow,
     stopMonitoringInternal,
+    dismissAlert,
   ])
 
   return <MonitoringContext.Provider value={value}>{children}</MonitoringContext.Provider>
