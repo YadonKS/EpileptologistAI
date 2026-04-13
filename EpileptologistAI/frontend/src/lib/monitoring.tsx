@@ -24,6 +24,7 @@ interface MonitoringContextValue {
   lastWindowData: ReturnType<typeof useEEGSocket>['lastWindowData']
   completion: ReturnType<typeof useEEGSocket>['completion']
   elapsedSeconds: number
+  emailAlertsEnabled: boolean
   inAppAlertsEnabled: boolean
   alerts: MonitoringAlert[]
   isConnected: boolean
@@ -34,6 +35,7 @@ interface MonitoringContextValue {
   stopMonitoring: () => Promise<void>
   checkSignalQuality: () => Promise<void>
   clearBackendError: () => void
+  setEmailAlertsEnabled: (enabled: boolean) => void
   setInAppAlertsEnabled: (enabled: boolean) => void
   dismissAlert: (id: string) => void
 }
@@ -50,12 +52,14 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [backendError, setBackendError] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(defaultAccountSettings.emailAlerts)
   const [inAppAlertsEnabled, setInAppAlertsEnabled] = useState(defaultAccountSettings.inAppAlerts)
   const [alerts, setAlerts] = useState<MonitoringAlert[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const monitoringStartedAtMsRef = useRef<number | null>(null)
   const alertedWindowsRef = useRef<Set<number>>(new Set())
   const alertTimeoutsRef = useRef<Map<string, number>>(new Map())
+  const emailedCompletionRef = useRef<string | null>(null)
 
   const { lastPrediction, lastWindowData, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
 
@@ -73,6 +77,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setSessionId(null)
       setElapsedSeconds(0)
       setAlerts([])
+      setEmailAlertsEnabled(defaultAccountSettings.emailAlerts)
       setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts)
       sessionIdRef.current = null
       monitoringStartedAtMsRef.current = null
@@ -83,8 +88,14 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     }
 
     getAccountSettings(user.id, user.email)
-      .then((settings) => setInAppAlertsEnabled(settings.inAppAlerts))
-      .catch(() => setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts))
+      .then((settings) => {
+        setEmailAlertsEnabled(settings.emailAlerts)
+        setInAppAlertsEnabled(settings.inAppAlerts)
+      })
+      .catch(() => {
+        setEmailAlertsEnabled(defaultAccountSettings.emailAlerts)
+        setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts)
+      })
   }, [user])
 
   const dismissAlert = useCallback((id: string) => {
@@ -131,6 +142,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setSessionId(null)
       sessionIdRef.current = null
       alertedWindowsRef.current.clear()
+      emailedCompletionRef.current = null
     }
   }, [completion])
 
@@ -142,8 +154,36 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setSessionId(null)
       sessionIdRef.current = null
       alertedWindowsRef.current.clear()
+      emailedCompletionRef.current = null
     }
   }, [wsError])
+
+  useEffect(() => {
+    if (!completion || !user?.email || !emailAlertsEnabled) return
+    if (completion.final_prediction !== 1) return
+
+    const completionKey = `${completion.total_windows}:${completion.seizure_count}:${completion.avg_probability.toFixed(4)}`
+    if (emailedCompletionRef.current === completionKey) return
+    emailedCompletionRef.current = completionKey
+
+    const endedAt = new Date().toISOString()
+    const payload = {
+      to_email: user.email,
+      user_name: (user.user_metadata?.full_name as string | undefined) ?? user.email,
+      monitoring_ended_at: endedAt,
+      avg_probability: completion.avg_probability,
+      seizure_count: completion.seizure_count,
+      total_windows: completion.total_windows,
+    }
+
+    fetch('http://127.0.0.1:8000/api/alerts/high-risk-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.error('High-risk alert email failed', err)
+    })
+  }, [completion, emailAlertsEnabled, user])
 
   useEffect(() => {
     if (!isMonitoring || !inAppAlertsEnabled || !lastPrediction) return
@@ -176,6 +216,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setMonitoringStatus('idle')
       setAlerts([])
       alertedWindowsRef.current.clear()
+      emailedCompletionRef.current = null
       return
     }
 
@@ -189,6 +230,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     setSessionId(null)
     setAlerts([])
     alertedWindowsRef.current.clear()
+    emailedCompletionRef.current = null
     sessionIdRef.current = null
   }, [lastPrediction, wsCancel])
 
@@ -273,6 +315,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     setElapsedSeconds(0)
     setAlerts([])
     alertedWindowsRef.current.clear()
+    emailedCompletionRef.current = null
     setMonitoringStatus('starting')
 
     try {
@@ -296,6 +339,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     lastWindowData,
     completion,
     elapsedSeconds,
+    emailAlertsEnabled,
     inAppAlertsEnabled,
     alerts,
     isConnected,
@@ -306,6 +350,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     stopMonitoring: stopMonitoringInternal,
     checkSignalQuality,
     clearBackendError,
+    setEmailAlertsEnabled,
     setInAppAlertsEnabled,
     dismissAlert,
   }), [
@@ -318,6 +363,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     connectionStatus,
     disconnectDevice,
     elapsedSeconds,
+    emailAlertsEnabled,
     inAppAlertsEnabled,
     isConnected,
     isMonitoring,

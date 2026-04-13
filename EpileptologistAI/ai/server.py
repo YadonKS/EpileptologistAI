@@ -115,6 +115,15 @@ class AnalyticsEmailRequest(BaseModel):
     history: List[AnalyticsHistoryItem]
 
 
+class HighRiskAlertEmailRequest(BaseModel):
+    to_email: str
+    user_name: Optional[str] = None
+    monitoring_ended_at: str
+    avg_probability: float
+    seizure_count: int
+    total_windows: int
+
+
 @app.post("/api/session/start", response_model=StartResponse)
 async def start_session(req: StartRequest):
     global _active_session
@@ -543,6 +552,100 @@ async def email_analytics_report(payload: AnalyticsEmailRequest):
         raise HTTPException(status_code=500, detail=f"Failed to send analytics email: {exc}") from exc
 
     return {"ok": True, "to": payload.to_email, "filename": filename}
+
+
+@app.post("/api/alerts/high-risk-email")
+async def email_high_risk_alert(payload: HighRiskAlertEmailRequest):
+    smtp_host = os.environ.get("SMTP_HOST", "").strip()
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USERNAME", "").strip()
+    smtp_pass = os.environ.get("SMTP_PASSWORD", "").strip()
+    smtp_from = os.environ.get("SMTP_FROM_EMAIL", smtp_user).strip()
+    smtp_from_name = os.environ.get("SMTP_FROM_NAME", "EpileptologistAI")
+    smtp_use_tls = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+    smtp_use_ssl = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
+
+    if not smtp_host or not smtp_from:
+        raise HTTPException(
+            status_code=500,
+            detail="Email service is not configured. Set SMTP_HOST and SMTP_FROM_EMAIL (plus auth vars if needed).",
+        )
+
+    try:
+        ended_dt = datetime.fromisoformat(payload.monitoring_ended_at.replace("Z", "+00:00"))
+        ended_label = ended_dt.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:
+        ended_label = payload.monitoring_ended_at
+
+    probability_pct = payload.avg_probability * 100.0
+
+    msg = EmailMessage()
+    msg["Subject"] = "EpileptologistAI Alert: Seizures Detected During Monitoring"
+    msg["From"] = formataddr((smtp_from_name, smtp_from))
+    msg["To"] = payload.to_email
+    msg["Date"] = formatdate(localtime=True)
+
+    plain = (
+        f"Hello {payload.user_name or 'User'},\n\n"
+        "A high-risk monitoring outcome was detected.\n"
+        f"Monitoring ended: {ended_label}\n"
+        f"Average seizure probability: {probability_pct:.1f}%\n"
+        f"Flagged seizure windows: {payload.seizure_count} of {payload.total_windows}\n\n"
+        "Recommended next steps:\n"
+        "1) Review this monitoring session in the app.\n"
+        "2) Go to the Data Analysis page for detailed window-level trends.\n"
+        "3) If symptoms are concerning, follow your care plan and seek clinical guidance.\n\n"
+        "How to navigate: Open the app and click 'Data Analysis' in the top navigation bar.\n"
+    )
+    msg.set_content(plain)
+
+    html = f"""
+<html>
+  <body style=\"margin:0;padding:18px;background:#0a0f1a;color:#e2e8f0;font-family:Segoe UI,Arial,sans-serif;\">
+    <div style=\"max-width:680px;margin:0 auto;background:#111827;border:1px solid #334155;border-radius:12px;padding:18px;\">
+      <h2 style=\"margin:0 0 10px;color:#f87171;\">Seizures Detected During Monitoring</h2>
+      <p style=\"margin:0 0 8px;color:#cbd5e1;\">Hello {payload.user_name or 'User'},</p>
+      <p style=\"margin:0 0 14px;color:#cbd5e1;\">A high-risk monitoring outcome was detected.</p>
+
+      <table style=\"width:100%;border-collapse:collapse;background:#0f172a;border:1px solid #334155;border-radius:8px;overflow:hidden;\">
+        <tr><th style=\"text-align:left;padding:10px;border-bottom:1px solid #334155;color:#94a3b8;\">Monitoring ended</th><td style=\"padding:10px;border-bottom:1px solid #334155;\">{ended_label}</td></tr>
+        <tr><th style=\"text-align:left;padding:10px;border-bottom:1px solid #334155;color:#94a3b8;\">Average seizure probability</th><td style=\"padding:10px;border-bottom:1px solid #334155;color:#fca5a5;font-weight:700;\">{probability_pct:.1f}%</td></tr>
+        <tr><th style=\"text-align:left;padding:10px;color:#94a3b8;\">Flagged windows</th><td style=\"padding:10px;\">{payload.seizure_count} / {payload.total_windows}</td></tr>
+      </table>
+
+      <p style=\"margin:14px 0 8px;color:#93c5fd;font-weight:600;\">Recommended next steps</p>
+      <ol style=\"margin:0 0 12px 18px;color:#cbd5e1;\">
+        <li>Review this monitoring session in the app.</li>
+        <li>Open the <strong>Data Analysis</strong> page for detailed window-level trends.</li>
+        <li>If symptoms are concerning, follow your care plan and seek clinical guidance.</li>
+      </ol>
+
+      <p style=\"margin:0;color:#94a3b8;font-size:12px;\">Navigation tip: use the top navigation bar and click <strong>Data Analysis</strong>.</p>
+    </div>
+  </body>
+</html>
+"""
+    msg.add_alternative(html, subtype="html")
+
+    try:
+        if smtp_use_ssl:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+                server.ehlo()
+                if smtp_use_tls:
+                    server.starttls()
+                    server.ehlo()
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send high-risk alert email: {exc}") from exc
+
+    return {"ok": True, "to": payload.to_email}
 
 
 # ── WebSocket endpoint ──

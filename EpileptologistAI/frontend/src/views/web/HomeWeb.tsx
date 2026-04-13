@@ -43,6 +43,7 @@ export default function HomeWeb() {
     stopMonitoring,
     checkSignalQuality,
     clearBackendError,
+    setEmailAlertsEnabled,
     setInAppAlertsEnabled,
   } = useMonitoring()
 
@@ -100,6 +101,9 @@ export default function HomeWeb() {
     emergencyContactTrimmed.length > 0 && !EMAIL_REGEX.test(emergencyContactTrimmed)
 
   const onSettingChange = (patch: Partial<AccountSettings>) => {
+    if (Object.prototype.hasOwnProperty.call(patch, 'emailAlerts')) {
+      setEmailAlertsEnabled(Boolean(patch.emailAlerts))
+    }
     if (Object.prototype.hasOwnProperty.call(patch, 'inAppAlerts')) {
       setInAppAlertsEnabled(Boolean(patch.inAppAlerts))
     }

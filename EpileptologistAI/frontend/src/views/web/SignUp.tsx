@@ -25,6 +25,7 @@ export default function SignUp() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [requiresVerification, setRequiresVerification] = useState(true)
+  const [emailLikelySent, setEmailLikelySent] = useState(true)
   const [resendLoading, setResendLoading] = useState(false)
   const [resendNotice, setResendNotice] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -55,13 +56,14 @@ export default function SignUp() {
     }
 
     setLoading(true)
-    const { error, requiresEmailVerification } = await signUp(emailTrimmed, password, name.trim())
+    const { error, requiresEmailVerification, emailLikelySent } = await signUp(emailTrimmed, password, name.trim())
     setLoading(false)
 
     if (error) {
       setError(error)
     } else {
       setRequiresVerification(requiresEmailVerification)
+      setEmailLikelySent(emailLikelySent)
       setSuccess(true)
     }
   }
@@ -115,10 +117,17 @@ export default function SignUp() {
               <h2 className="text-lg font-semibold text-slate-200">Check your email</h2>
               {requiresVerification ? (
                 <>
-                  <p className="text-sm text-slate-400">
-                    We sent a confirmation link to <span className="text-slate-200">{email}</span>.
-                    Click it to activate your account.
-                  </p>
+                  {emailLikelySent ? (
+                    <p className="text-sm text-slate-400">
+                      We sent a confirmation link to <span className="text-slate-200">{email}</span>.
+                      Click it to activate your account.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-300">
+                      If this email already has an account, Supabase may not send another signup confirmation email.
+                      Try signing in and use "Resend verification email" from the login screen.
+                    </p>
+                  )}
                   <Button type="button" variant="outline" onClick={handleResendVerification} disabled={resendLoading || resendCooldown > 0}>
                     {resendLoading ? 'Resending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend verification email'}
                   </Button>

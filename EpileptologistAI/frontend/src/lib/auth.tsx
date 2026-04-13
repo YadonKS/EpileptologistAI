@@ -12,7 +12,7 @@ interface AuthState {
     email: string,
     password: string,
     name: string
-  ) => Promise<{ error: string | null; requiresEmailVerification: boolean }>
+  ) => Promise<{ error: string | null; requiresEmailVerification: boolean; emailLikelySent: boolean }>
   resendSignupVerification: (email: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
@@ -65,7 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     const requiresEmailVerification = !data.session
-    return { error: normalizeAuthError(error?.message), requiresEmailVerification }
+    const identities = data.user?.identities
+    const emailLikelySent = !error && Array.isArray(identities) ? identities.length > 0 : false
+    return { error: normalizeAuthError(error?.message), requiresEmailVerification, emailLikelySent }
   }
 
   const resendSignupVerification = async (email: string) => {
