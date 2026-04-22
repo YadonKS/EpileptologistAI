@@ -16,6 +16,14 @@ _seizure_windows = set()
 _normal_data = None
 _seizure_data = None
 _last_window_is_seizure = None
+# None = use random schedule, "normal" = always normal, "seizure" = always seizure
+_demo_mode: str | None = None
+
+
+def set_demo_mode(mode: str | None) -> None:
+    """Set playback mode for demo purposes. mode is 'normal', 'seizure', or None (random)."""
+    global _demo_mode
+    _demo_mode = mode
 
 
 def _load_real_samples():
@@ -42,8 +50,7 @@ def _init_seizure_schedule():
     except ValueError:
         ratio = 0.5
 
-    # Keep ratio in a healthy range so one class does not dominate mock runs.
-    ratio = max(0.3, min(0.7, ratio))
+    ratio = max(0.0, min(1.0, ratio))
     n_seizure = int(round(_WINDOWS_PER_SESSION * ratio))
     _seizure_windows = set(random.sample(range(_WINDOWS_PER_SESSION), n_seizure))
 
