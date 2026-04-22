@@ -11,6 +11,13 @@ import pywt
 from scipy.signal import welch
 from scipy.stats import skew, kurtosis, entropy
 
+
+# NumPy 2 removed np.trapz; prefer trapezoid with fallback for older versions.
+def _integrate(y: np.ndarray, x: np.ndarray) -> float:
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x))
+    return float(np.trapz(y, x))
+
 time_feats = [
     "mean","std","var","rms",
     "abs_diff_sum","ptp","zero_crossings",
@@ -62,7 +69,7 @@ def extract_frequency_domain_features(signal_window: np.ndarray, fs: int = 256) 
     band_powers = {}
     for name, (low, high) in bands.items():
         idx = (freqs >= low) & (freqs <= high)
-        band_powers[name] = np.trapezoid(psd[idx], freqs[idx])
+        band_powers[name] = _integrate(psd[idx], freqs[idx])
 
     total = sum(band_powers.values()) + 1e-10
     rel = {k: v / total for k, v in band_powers.items()}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui'
 import { Input } from '../../components/ui'
@@ -24,7 +24,12 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const { signUp } = useAuth()
+  const [requiresVerification, setRequiresVerification] = useState(true)
+  const [emailLikelySent, setEmailLikelySent] = useState(true)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendNotice, setResendNotice] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const { signUp, resendSignupVerification } = useAuth()
   const emailTrimmed = email.trim()
   const emailLooksValid = EMAIL_REGEX.test(emailTrimmed)
   const pwd = getPasswordChecks(password)
@@ -51,15 +56,36 @@ export default function SignUp() {
     }
 
     setLoading(true)
-    const { error } = await signUp(emailTrimmed, password, name.trim())
+    const { error, requiresEmailVerification, emailLikelySent } = await signUp(emailTrimmed, password, name.trim())
     setLoading(false)
 
     if (error) {
       setError(error)
     } else {
+      setRequiresVerification(requiresEmailVerification)
+      setEmailLikelySent(emailLikelySent)
       setSuccess(true)
     }
   }
+
+  const handleResendVerification = async () => {
+    const targetEmail = emailTrimmed
+    if (!targetEmail || resendCooldown > 0) return
+    setResendLoading(true)
+    setResendNotice('')
+    const { error } = await resendSignupVerification(targetEmail)
+    setResendLoading(false)
+    setResendNotice(error ?? `Verification email resent to ${targetEmail}.`)
+    setResendCooldown(60)
+  }
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const id = window.setInterval(() => {
+      setResendCooldown((s) => (s > 0 ? s - 1 : 0))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [resendCooldown])
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center relative overflow-hidden">
@@ -89,10 +115,32 @@ export default function SignUp() {
                 </svg>
               </div>
               <h2 className="text-lg font-semibold text-slate-200">Check your email</h2>
-              <p className="text-sm text-slate-400">
-                We sent a confirmation link to <span className="text-slate-200">{email}</span>.
-                Click it to activate your account.
-              </p>
+              {requiresVerification ? (
+                <>
+                  {emailLikelySent ? (
+                    <p className="text-sm text-slate-400">
+                      We sent a confirmation link to <span className="text-slate-200">{email}</span>.
+                      Click it to activate your account.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-300">
+                      If this email already has an account, Supabase may not send another signup confirmation email.
+                      Try signing in and use "Resend verification email" from the login screen.
+                    </p>
+                  )}
+                  <Button type="button" variant="outline" onClick={handleResendVerification} disabled={resendLoading || resendCooldown > 0}>
+                    {resendLoading ? 'Resending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend verification email'}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-amber-300">
+                  Your project currently signs users up as already verified. If you want a verification prompt every time,
+                  enable "Confirm email" in Supabase Auth settings.
+                </p>
+              )}
+              {resendNotice && (
+                <p className="text-xs text-slate-400">{resendNotice}</p>
+              )}
               <Link to="/login" className="inline-block text-sm text-brand-400 hover:text-brand-300 font-medium">
                 Back to sign in
               </Link>

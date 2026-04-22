@@ -9,7 +9,7 @@ import DataDisplayPage from './views/web/DataDisplayPage'
 import About from './views/web/About'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, isEmailVerified, loading } = useAuth()
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
@@ -17,14 +17,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     )
   }
-  if (!user) return <Navigate to="/login" replace />
+  if (!user || !isEmailVerified) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, isEmailVerified, loading } = useAuth()
   if (loading) return null
-  if (user) return <Navigate to="/" replace />
+  if (user && isEmailVerified) return <Navigate to="/" replace />
   return <>{children}</>
 }
 

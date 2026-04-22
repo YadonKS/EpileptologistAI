@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui'
 import { Input } from '../../components/ui'
@@ -10,19 +10,53 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { signIn } = useAuth()
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('')
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendNotice, setResendNotice] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const { signIn, resendSignupVerification } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setResendNotice('')
     setLoading(true)
 
-    const { error } = await signIn(email, password)
-    if (error) {
-      setError(error)
-      setLoading(false)
+    const loginEmail = email.trim()
+    const { error } = await signIn(loginEmail, password)
+    setLoading(false)
+
+    if (!error) return
+
+    const lower = error.toLowerCase()
+    const unverified = lower.includes('email not confirmed') || lower.includes('email not verified')
+    if (unverified) {
+      setPendingVerificationEmail(loginEmail)
+      setError('Please verify your email before signing in. You can resend the verification email below.')
+      return
     }
+
+    setPendingVerificationEmail('')
+    setError(error)
   }
+
+  const handleResendVerification = async () => {
+    if (!pendingVerificationEmail || resendCooldown > 0) return
+    setResendLoading(true)
+    setResendNotice('')
+    const { error } = await resendSignupVerification(pendingVerificationEmail)
+    setResendLoading(false)
+    setResendNotice(error ?? `Verification email resent to ${pendingVerificationEmail}.`)
+    setResendCooldown(60)
+  }
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const id = window.setInterval(() => {
+      setResendCooldown((s) => (s > 0 ? s - 1 : 0))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [resendCooldown])
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center relative overflow-hidden">
@@ -73,6 +107,16 @@ export default function Login() {
             {error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-400">
                 {error}
+              </div>
+            )}
+
+            {pendingVerificationEmail && (
+              <div className="space-y-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+                <p className="text-xs text-amber-300">Need a new verification link?</p>
+                <Button type="button" variant="outline" className="w-full" onClick={handleResendVerification} disabled={resendLoading || resendCooldown > 0}>
+                  {resendLoading ? 'Resending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend verification email'}
+                </Button>
+                {resendNotice && <p className="text-xs text-slate-300">{resendNotice}</p>}
               </div>
             )}
 
