@@ -39,12 +39,21 @@ interface CachedPredictionPoint {
   elapsed_seconds: number
 }
 
+/** One window of predictions for live charts (upserted by `window`). */
+export interface LivePredictionPoint {
+  window: number
+  prediction: number
+  probability: number
+  elapsed_seconds: number
+}
+
 interface UseEEGSocketReturn {
   lastPrediction: PredictionMessage | null
   lastWindowData: number[][] | null
   completion: CompleteMessage | null
   error: string | null
   isConnected: boolean
+  livePredictions: LivePredictionPoint[]
   cancel: () => void
 }
 
@@ -57,9 +66,18 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
   const [completion, setCompletion] = useState<CompleteMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [livePredictions, setLivePredictions] = useState<LivePredictionPoint[]>([])
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) {
+      setLivePredictions([])
+      setLastPrediction(null)
+      setLastWindowData(null)
+      setCompletion(null)
+      setError(null)
+      setIsConnected(false)
+      return
+    }
 
     const persistCache = (completedAt: string | null) => {
       try {
@@ -81,6 +99,7 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     setLastWindowData(null)
     setCompletion(null)
     setError(null)
+    setLivePredictions([])
     runStartedAtRef.current = new Date().toISOString()
     predictionHistoryRef.current = []
     persistCache(null)
@@ -102,6 +121,17 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
           elapsed_seconds: data.elapsed_seconds,
         })
         persistCache(null)
+        setLivePredictions((prev) => {
+          const rest = prev.filter((p) => p.window !== data.window)
+          rest.push({
+            window: data.window,
+            prediction: data.prediction,
+            probability: data.probability,
+            elapsed_seconds: data.elapsed_seconds,
+          })
+          rest.sort((a, b) => a.window - b.window)
+          return rest
+        })
         setLastPrediction(data)
         setLastWindowData(Array.isArray(data.raw_window) ? data.raw_window : null)
       } else if (data.type === 'complete') {
@@ -131,7 +161,7 @@ export function useEEGSocket(sessionId: string | null): UseEEGSocketReturn {
     }
   }, [])
 
-  return { lastPrediction, lastWindowData, completion, error, isConnected, cancel }
+  return { lastPrediction, lastWindowData, completion, error, isConnected, livePredictions, cancel }
 }
 
 

@@ -1,8 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
-import BrandLogo from './BrandLogo'
 import InAppAlerts from './InAppAlerts'
+import PresentationBackdrop from './PresentationBackdrop'
+import ProjectAssistant from './ProjectAssistant'
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -19,16 +20,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
+    <div className="min-h-screen bg-transparent flex flex-col relative">
+      <PresentationBackdrop />
       <LayoutHeader />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 relative z-10">
         {children}
       </main>
       <InAppAlerts />
-      <footer className="border-t border-gray-800/50 bg-surface/50">
+      <ProjectAssistant />
+      <footer className="relative z-10 border-t border-white/[0.07] bg-surface/45 shadow-[0_-20px_40px_-28px_rgba(0,0,0,0.55)] backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <p className="text-xs text-slate-600">
-            &copy; 2025 EpileptologistAI &mdash; For educational purposes only. Not a medical device.
+            &copy; 2026 EpileptologistAI &mdash; For educational purposes only. Not a medical device.
           </p>
           <p className="text-xs text-slate-600">Capstone Project</p>
         </div>
@@ -42,27 +45,33 @@ function LayoutHeader() {
   const { user, signOut } = useAuth()
 
   return (
-    <header className="border-b border-gray-800/50 bg-surface/80 backdrop-blur-xl sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg overflow-hidden bg-slate-900/70">
-            <BrandLogo className="h-full w-full object-cover" />
-          </div>
-          <span className="text-lg font-bold text-slate-100 tracking-tight">
-            Epileptologist<span className="text-brand-400">AI</span>
+    <header className="relative sticky top-0 z-50 border-b border-white/[0.07] bg-surface/70 shadow-[0_24px_48px_-28px_rgba(0,0,0,0.65)] backdrop-blur-2xl supports-[backdrop-filter]:bg-surface/55">
+      <div className="max-w-7xl mx-auto px-6 h-[4.25rem] flex items-center justify-between">
+        <Link
+          to="/"
+          className="group flex flex-col gap-0.5 rounded-lg outline-none ring-offset-2 ring-offset-bg transition-transform duration-300 [transform-style:preserve-3d] hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand-500/40"
+        >
+          <span className="font-display text-[1.05rem] font-semibold leading-none tracking-tight text-slate-100 transition-colors group-hover:text-white sm:text-lg">
+            Epileptologist
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-200 via-fuchsia-300 to-violet-400">
+              AI
+            </span>
+          </span>
+          <span className="text-[0.625rem] font-medium uppercase tracking-[0.22em] text-slate-600">
+            EEG intelligence
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-black/25 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-md">
           {navItems.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
               className={cn(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
+                'rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 [transform-style:preserve-3d]',
                 location.pathname === to
-                  ? 'text-brand-400 bg-brand-500/10'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                  ? 'bg-gradient-to-b from-white/[0.12] to-white/[0.04] text-slate-100 shadow-[0_8px_24px_-8px_rgba(124,58,246,0.35)] ring-1 ring-white/15'
+                  : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-200 hover:shadow-[0_6px_20px_-10px_rgba(0,0,0,0.5)]'
               )}
             >
               {label}
@@ -71,13 +80,13 @@ function LayoutHeader() {
 
           {user && (
             <>
-              <div className="ml-3 h-6 w-px bg-gray-800" />
-              <span className="ml-3 text-xs text-slate-500 hidden md:inline">
+              <div className="ml-2 h-6 w-px bg-white/[0.06]" />
+              <span className="ml-3 max-w-[200px] truncate text-xs text-slate-500 hidden md:inline">
                 {user.email}
               </span>
               <button
                 onClick={() => signOut()}
-                className="ml-3 px-4 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+                className="ml-2 rounded-full px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-white/[0.04] hover:text-slate-200"
               >
                 Sign Out
               </button>

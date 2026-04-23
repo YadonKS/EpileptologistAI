@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 
-const CHANNEL_COLORS = ['#22d3ee', '#34d399', '#a78bfa', '#fb923c', '#f472b6', '#facc15']
+const CHANNEL_COLORS = ['#c084fc', '#34d399', '#e879f9', '#fb923c', '#f472b6', '#facc15']
 
 interface Props {
   channels?: number

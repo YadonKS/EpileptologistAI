@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button } from '../../components/ui'
-import { Input } from '../../components/ui'
+import { Button, Card, Input } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+import PresentationBackdrop from '../../components/PresentationBackdrop'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -88,24 +88,34 @@ export default function SignUp() {
   }, [resendCooldown])
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-500/5 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-transparent flex items-center justify-center relative overflow-hidden">
+      <PresentationBackdrop />
 
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 items-center justify-center mb-4 shadow-lg shadow-brand-500/20">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-100">Create Account</h1>
-          <p className="text-sm text-slate-500 mt-1">Get started with EpileptologistAI</p>
+        <div className="mb-10 text-center">
+          <p className="mb-3 text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-slate-500">
+            New workspace
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-50 sm:text-[2rem]">
+            Create your account
+          </h1>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-slate-500">
+            Join{' '}
+            <span className="font-display font-medium text-slate-300">
+              Epileptologist
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-300 to-fuchsia-400">
+                AI
+              </span>
+            </span>{' '}
+            to run monitored sessions and review analysis in one place.
+          </p>
         </div>
 
-        <div className="bg-surface border border-gray-800/50 rounded-2xl p-8 space-y-6 glow-cyan">
+        <Card
+          elevated
+          glow="accent"
+          className="space-y-6 rounded-3xl !p-8 shadow-[0_32px_120px_-48px_rgba(0,0,0,0.75)] backdrop-blur-xl"
+        >
           {success ? (
             <div className="text-center space-y-4 py-4">
               <div className="inline-flex h-14 w-14 rounded-full bg-emerald-500/10 items-center justify-center">
@@ -232,7 +242,7 @@ export default function SignUp() {
               </div>
             </>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

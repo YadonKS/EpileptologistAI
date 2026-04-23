@@ -7,6 +7,7 @@ import random
 import time
 import os
 from pathlib import Path
+from typing import Optional
 import numpy as np
 
 _SAMPLES_PER_WINDOW = 256 * 6  # 1536
@@ -17,10 +18,10 @@ _normal_data = None
 _seizure_data = None
 _last_window_is_seizure = None
 # None = use random schedule, "normal" = always normal, "seizure" = always seizure
-_demo_mode: str | None = None
+_demo_mode: Optional[str] = None
 
 
-def set_demo_mode(mode: str | None) -> None:
+def set_demo_mode(mode: Optional[str]) -> None:
     """Set playback mode for demo purposes. mode is 'normal', 'seizure', or None (random)."""
     global _demo_mode
     _demo_mode = mode

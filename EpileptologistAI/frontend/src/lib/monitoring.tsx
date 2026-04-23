@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './auth'
-import { useEEGSocket, startSession, stopSession } from './eeg-socket'
+import { useEEGSocket, startSession, stopSession, type LivePredictionPoint } from './eeg-socket'
 import { defaultAccountSettings, getAccountSettings } from './accountSettings'
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'
@@ -22,6 +22,9 @@ interface MonitoringContextValue {
   backendError: string | null
   lastPrediction: ReturnType<typeof useEEGSocket>['lastPrediction']
   lastWindowData: ReturnType<typeof useEEGSocket>['lastWindowData']
+  livePredictions: LivePredictionPoint[]
+  liveRunStartedAtMs: number | null
+  liveSessionId: string | null
   completion: ReturnType<typeof useEEGSocket>['completion']
   elapsedSeconds: number
   emailAlertsEnabled: boolean
@@ -55,13 +58,22 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(defaultAccountSettings.emailAlerts)
   const [inAppAlertsEnabled, setInAppAlertsEnabled] = useState(defaultAccountSettings.inAppAlerts)
   const [alerts, setAlerts] = useState<MonitoringAlert[]>([])
+  const [liveRunStartedAtMs, setLiveRunStartedAtMs] = useState<number | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const monitoringStartedAtMsRef = useRef<number | null>(null)
   const alertedWindowsRef = useRef<Set<number>>(new Set())
   const alertTimeoutsRef = useRef<Map<string, number>>(new Map())
   const emailedCompletionRef = useRef<string | null>(null)
 
-  const { lastPrediction, lastWindowData, completion, error: wsError, isConnected: wsConnected, cancel: wsCancel } = useEEGSocket(sessionId)
+  const {
+    lastPrediction,
+    lastWindowData,
+    completion,
+    error: wsError,
+    isConnected: wsConnected,
+    livePredictions,
+    cancel: wsCancel,
+  } = useEEGSocket(sessionId)
 
   const isConnected = connectionStatus === 'connected'
   const isMonitoring = monitoringStatus === 'running'
@@ -77,6 +89,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setSessionId(null)
       setElapsedSeconds(0)
       setAlerts([])
+      setLiveRunStartedAtMs(null)
       setEmailAlertsEnabled(defaultAccountSettings.emailAlerts)
       setInAppAlertsEnabled(defaultAccountSettings.inAppAlerts)
       sessionIdRef.current = null
@@ -138,6 +151,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     if (completion) {
       setElapsedSeconds(completion.total_windows * 6)
       monitoringStartedAtMsRef.current = null
+      setLiveRunStartedAtMs(null)
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
@@ -150,6 +164,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     if (wsError) {
       setBackendError(wsError)
       monitoringStartedAtMsRef.current = null
+      setLiveRunStartedAtMs(null)
       setMonitoringStatus('idle')
       setSessionId(null)
       sessionIdRef.current = null
@@ -213,6 +228,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const stopMonitoringInternal = useCallback(async () => {
     if (!sessionIdRef.current) {
       monitoringStartedAtMsRef.current = null
+      setLiveRunStartedAtMs(null)
       setMonitoringStatus('idle')
       setAlerts([])
       alertedWindowsRef.current.clear()
@@ -226,6 +242,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setElapsedSeconds(lastPrediction.elapsed_seconds)
     }
     monitoringStartedAtMsRef.current = null
+    setLiveRunStartedAtMs(null)
     setMonitoringStatus('idle')
     setSessionId(null)
     setAlerts([])
@@ -311,7 +328,9 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     if (!user || !isConnected || monitoringStatus !== 'idle' || signalQualityState !== 'good') return
 
     setBackendError(null)
-    monitoringStartedAtMsRef.current = Date.now()
+    const runStart = Date.now()
+    monitoringStartedAtMsRef.current = runStart
+    setLiveRunStartedAtMs(runStart)
     setElapsedSeconds(0)
     setAlerts([])
     alertedWindowsRef.current.clear()
@@ -325,6 +344,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     } catch {
       setBackendError('Monitoring could not start. Please try again.')
       setMonitoringStatus('idle')
+      setLiveRunStartedAtMs(null)
     }
   }, [isConnected, monitoringStatus, signalQualityState, user])
 
@@ -337,6 +357,9 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     backendError,
     lastPrediction,
     lastWindowData,
+    livePredictions,
+    liveRunStartedAtMs,
+    liveSessionId: sessionId,
     completion,
     elapsedSeconds,
     emailAlertsEnabled,
@@ -369,6 +392,9 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     isMonitoring,
     lastPrediction,
     lastWindowData,
+    livePredictions,
+    liveRunStartedAtMs,
+    sessionId,
     monitoringStatus,
     signalQualityMessage,
     signalQualityScore,

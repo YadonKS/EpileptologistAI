@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button } from '../../components/ui'
-import { Input } from '../../components/ui'
-import BrandLogo from '../../components/BrandLogo'
+import { Button, Card, Input } from '../../components/ui'
+import PresentationBackdrop from '../../components/PresentationBackdrop'
 import { useAuth } from '../../lib/auth'
 
 export default function Login() {
@@ -59,24 +58,34 @@ export default function Login() {
   }, [resendCooldown])
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-500/5 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-transparent flex items-center justify-center relative overflow-hidden">
+      <PresentationBackdrop />
 
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-2xl items-center justify-center mb-4 shadow-lg shadow-brand-500/20 overflow-hidden bg-slate-900/60">
-            <BrandLogo className="h-full w-full object-cover" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-100">
-            Epileptologist<span className="text-brand-400">AI</span>
+        <div className="mb-10 text-center">
+          <p className="mb-3 text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-slate-500">
+            Secure access
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-50 sm:text-[2rem]">
+            Welcome back
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Sign in to your monitoring dashboard</p>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-slate-500">
+            Sign in to{' '}
+            <span className="font-display font-medium text-slate-300">
+              Epileptologist
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-300 to-fuchsia-400">
+                AI
+              </span>
+            </span>{' '}
+            - a live EEG monitoring and session intelligence.
+          </p>
         </div>
 
-        <div className="bg-surface border border-gray-800/50 rounded-2xl p-8 space-y-6 glow-cyan">
+        <Card
+          elevated
+          glow="accent"
+          className="space-y-6 rounded-3xl !p-8 shadow-[0_32px_120px_-48px_rgba(0,0,0,0.75)] backdrop-blur-xl"
+        >
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-sm font-medium text-slate-300">Email</label>
@@ -131,7 +140,7 @@ export default function Login() {
               Create one
             </Link>
           </div>
-        </div>
+        </Card>
 
         <p className="text-center text-xs text-slate-600 mt-6">
           For educational purposes only. Not a medical device.

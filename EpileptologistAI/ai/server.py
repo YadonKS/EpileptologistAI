@@ -1,5 +1,5 @@
 """
-FastAPI server — bridges the Python ML pipeline to the React frontend.
+FastAPI server, bridges the Python ML pipeline to the React frontend.
 
 Start with:
     cd ai
@@ -9,6 +9,7 @@ Start with:
 import asyncio
 import json
 import os
+import re
 import smtplib
 import threading
 from datetime import datetime, timezone
@@ -124,6 +125,341 @@ class HighRiskAlertEmailRequest(BaseModel):
     total_windows: int
 
 
+class ProjectAssistantMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ProjectAssistantRequest(BaseModel):
+    messages: List[ProjectAssistantMessage]
+
+
+def _last_user_content(raw: List[dict]) -> Optional[str]:
+    """Last user message in the payload, or None if there is no user turn."""
+    for m in reversed(raw):
+        if (m.get("role") or "").strip().lower() != "user":
+            continue
+        return str(m.get("content") or "").strip()
+    return None
+
+
+def _faq_project_assistant_reply(user_text: str) -> str:
+    """Rule-based FAQ for the capstone demo, no external services or keys."""
+    t = user_text.lower().strip()
+    if not t:
+        return (
+            "Ask something about EpileptologistAI, for example: "
+            "“What is this project?”, “How does it work?”, or “How do I run the app?”"
+        )
+
+    if re.search(
+        r"\b(diagnos|diagnosis|prescription|medical advice|should i take|"
+        r"is it epilepsy|treatment plan|am i having a seizure)\b",
+        t,
+    ):
+        return (
+            "I cannot give medical advice, and EpileptologistAI is a research demo, "
+            "not a medical device. For health concerns, speak with a qualified clinician."
+        )
+
+    # --- Project identity & scope (common visitor questions) ---
+    if any(
+        p in t
+        for p in (
+            "what is this project",
+            "what is the project",
+            "what is epileptologist",
+            "what is epileptologistai",
+            "tell me about this project",
+            "tell me about the project",
+            "describe the project",
+            "describe this app",
+            "describe the app",
+            "what does this app do",
+            "what does the app do",
+            "what is the app",
+            "purpose of the project",
+            "what is the app for",
+            "who is this for",
+        )
+    ) or (re.search(r"\bwhat is\b", t) and ("project" in t or "capstone" in t or "this app" in t)):
+        return (
+            "EpileptologistAI is a university capstone demo: a web dashboard that ingests "
+            "EEG-style signals (six channels, 256 Hz), scores each time window with a trained "
+            "XGBoost model, and shows live charts, history, and simple risk messaging. "
+            "It is built to showcase engineering and ML, not for diagnosing or treating epilepsy."
+        )
+
+    _workflow_phrases = (
+        "how does this project work",
+        "how this project works",
+        "how does the app work",
+        "how the app works",
+        "explain the pipeline",
+        "data pipeline",
+        "end to end",
+        "end-to-end",
+        "workflow",
+        "architecture",
+        "system design",
+        "overview of the system",
+    )
+    _workflow_context = ("project", "app", "system", "pipeline", "eeg", "model", "dashboard", "backend", "frontend")
+    if any(p in t for p in _workflow_phrases) or (
+        any(p in t for p in ("how does it work", "how it works"))
+        and any(c in t for c in _workflow_context)
+    ):
+        return (
+            "Flow in short: (1) You start a monitoring session, the FastAPI backend creates a "
+            "session id. (2) Each ~6 second window of multi-channel data is preprocessed and run "
+            "through the XGBoost classifier. (3) Results stream to the browser over a WebSocket so "
+            "charts and alerts update live. (4) Optional pieces include Supabase-backed session "
+            "data, PDF/email summaries, and a synthetic EEG stream when no hardware is plugged in."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "limitation",
+            "limitations",
+            "disclaimer",
+            "not fda",
+            "clinical trial",
+            "can i use this on patients",
+            "is this approved",
+            "production ready",
+            "research only",
+        )
+    ):
+        return (
+            "Treat everything as a classroom / demo artifact: no regulatory clearance, "
+            "no patient-specific validation, and synthetic or sample data may be in play. "
+            "Never substitute this software for professional medical judgment or equipment."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "dataset",
+            "training data",
+            "where did the data",
+            "chb-mit",
+            "chb mit",
+            "real eeg",
+            "sample data",
+            "real_samples",
+        )
+    ):
+        return (
+            "The model was trained on engineered features from EEG windows; the repo can ship "
+            "small pre-extracted sample windows under ai/receiver/real_samples so demos look "
+            "realistic without live hardware. Exact training scripts live under ai/ (see train "
+            "and model export utilities)."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "supabase",
+            "database",
+            "login",
+            "sign in",
+            "sign up",
+            "auth",
+            "user account",
+        )
+    ):
+        return (
+            "The stack can use Supabase for auth and session persistence when you configure the "
+            "Supabase URL and keys in environment files (see backend and frontend env examples "
+            "in the repo). Without those variables, some flows may be limited to local demo mode."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "pdf",
+            "report",
+            "email",
+            "smtp",
+            "analytics email",
+            "export",
+        )
+    ):
+        return (
+            "The Python server exposes routes that can build PDF summaries and send analytics or "
+            "high-risk alert emails when mail settings are configured. The React UI triggers those "
+            "actions after a session when the feature is wired up."
+        )
+
+    if any(k in t for k in ("github", "repository", "repo", "source code", "where is the code")):
+        return (
+            "You are already in the project workspace: EpileptologistAI bundles a React frontend, "
+            "a Node/Express helper backend for some services, a Python FastAPI ML server under ai/, "
+            "and optional device/edge scripts. Browse README files in each folder for entry points."
+        )
+
+    if any(k in t for k in ("team", "who built", "authors", "capstone team", "group members")):
+        return (
+            "This FAQ does not list individual names, check your course README, "
+            "presentation credits, or repository contributors for the official team roster."
+        )
+
+    if any(k in t for k in ("goodbye", "bye", "see you", "cya")):
+        return "Good luck with the demo, restart the FAQ anytime if you have more project questions."
+
+    # Bottom-right “Project assistant” widget (specific phrases only)
+    if any(
+        k in t
+        for k in (
+            "how does this chat",
+            "how does the chat work",
+            "project assistant",
+            "rule-based",
+            "faq only",
+            "is this a real ai",
+            "is this chatgpt",
+            "is this claude",
+            "is this gpt",
+        )
+    ):
+        return (
+            "I'm a built-in keyword FAQ inside the FastAPI server: no cloud model, "
+            "no API keys, just short canned answers about EpileptologistAI."
+        )
+
+    if any(k in t for k in ("how to run", "npm start", "uvicorn", "start the app", "install", "setup", "prerequisite")):
+        return (
+            "Backend: cd ai, pip install -r requirements.txt, "
+            "uvicorn server:app --reload --port 8000. "
+            "Frontend: cd frontend, npm install, npm start (Vite, usually port 5173). "
+            "Set VITE_PROJECT_ASSISTANT_URL=http://127.0.0.1:8000/api/project-assistant in frontend/.env."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "stack",
+            "technologies",
+            "typescript",
+            "react",
+            "vite",
+            "fastapi",
+            "supabase",
+            "xgboost",
+        )
+    ):
+        return (
+            "Stack: React + TypeScript + Vite + Tailwind dashboard; FastAPI (Python) ML server "
+            "with WebSockets for live windows; XGBoost pipeline for window-level scores; "
+            "Supabase for sessions and persistence. PDF/email helpers live in the Python server."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "256",
+            "hz",
+            "hertz",
+            "sampling",
+            "6 second",
+            "6-second",
+            "window",
+            "channels",
+        )
+    ):
+        return (
+            "Demo pipeline uses 6 EEG channels at 256 Hz. "
+            "The model consumes fixed-length windows (about six seconds of data per window). "
+            "Exact preprocessing is in the Python ai/ package (feature extraction + scaler)."
+        )
+
+    if any(k in t for k in ("websocket", "ws", "real-time", "realtime", "live monitoring", "monitoring")):
+        return (
+            "During a session, the browser opens a WebSocket to the FastAPI server "
+            "(path like /api/ws/{session_id}) to stream window results and drive the live charts."
+        )
+
+    if any(k in t for k in ("risk", "heuristic", "high risk", "flagged", "two seizure", "2 seizure")):
+        return (
+            "The UI uses a simple capstone heuristic: repeated seizure-like model outputs "
+            "within a session contribute to an elevated risk summary, "
+            "it is for demonstration, not clinical decision support."
+        )
+
+    if any(k in t for k in ("fake", "simulation", "mock", "arduino", "signal quality")):
+        return (
+            "For demos without hardware, the server can drive a synthetic EEG stream "
+            "so windows, charts, and alerts behave predictably. "
+            "Signal-quality endpoints support the setup flow in the UI."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "seizure detection",
+            "detect seizure",
+            "seizure prediction",
+            "what does the model output",
+            "probability score",
+            "classification",
+        )
+    ):
+        return (
+            "Each ~6 second EEG window is featurized and passed through an XGBoost classifier "
+            "that outputs a seizure-like score. The dashboard plots those scores over time and "
+            "can highlight stretches that cross demo thresholds, still not a clinical decision."
+        )
+
+    if any(k in t for k in ("model", "train", "accuracy", "inference", "xgboost", "ml pipeline", "metrics", "f1", "precision", "recall")):
+        return (
+            "An XGBoost classifier scores each window after preprocessing and feature extraction. "
+            "The trained artifacts ship under ai/models; the server loads them at startup. "
+            "Reported metrics depend on the offline training split, see the training scripts in ai/."
+        )
+
+    if any(
+        k in t
+        for k in (
+            "demo script",
+            "what should i say",
+            "presentation tips",
+            "for judges",
+            "for the panel",
+            "pitch this",
+        )
+    ):
+        return (
+            "Highlight the end-to-end story: hardware or synthetic feed, windowing, live model "
+            "scores, WebSocket dashboard, optional analytics export. "
+            "Close with limitations: demo-only, not a medical device, synthetic data possible."
+        )
+
+    if re.search(r"\b(hi|hello|hey|howdy|greetings|good morning|good afternoon|good evening)\b", t) or t in (
+        "thanks",
+        "thank you",
+        "ok",
+        "okay",
+        "cool",
+        "nice",
+        "great",
+    ):
+        return (
+            "Hello, glad you are exploring EpileptologistAI. "
+            "I can answer short questions such as: what the project is, how the pipeline works, "
+            "how to run frontend and backend, the tech stack, EEG windowing, WebSockets, "
+            "or demo limitations. Type a phrase and I will match the closest topic."
+        )
+
+    return (
+        "I match a fixed list of capstone topics, your message did not hit one closely enough. "
+        "Try asking about: what this project is, how it works end-to-end, how to run it, "
+        "the stack, EEG sampling and windows, WebSockets during monitoring, seizure scores, "
+        "risk heuristics, synthetic vs real hardware, Supabase/auth, PDF/email exports, "
+        "limitations, or the project assistant FAQ itself."
+    )
+
+
 @app.post("/api/session/start", response_model=StartResponse)
 async def start_session(req: StartRequest):
     global _active_session
@@ -173,6 +509,16 @@ async def reset_signal_quality_mock():
     # In fake mode this resets fail/pass sequence index; in real mode it's a no-op.
     reset_fake_stream()
     return {"ok": True}
+
+
+@app.post("/api/project-assistant")
+async def project_assistant(req: ProjectAssistantRequest):
+    """Rule-based FAQ only, no external APIs or keys. Frontend: VITE_PROJECT_ASSISTANT_URL should target this path."""
+    raw = [m.model_dump() for m in req.messages]
+    user_text = _last_user_content(raw)
+    if user_text is None:
+        return {"reply": "No valid messages were sent. Add a user message and try again."}
+    return {"reply": _faq_project_assistant_reply(user_text)}
 
 
 def _safe_parse_iso(iso_str: Optional[str]) -> Optional[datetime]:
@@ -417,7 +763,7 @@ def _build_analytics_pdf(payload: AnalyticsEmailRequest) -> bytes:
 
     pdf.setFillColor(muted)
     pdf.setFont("Helvetica", 8)
-    pdf.drawString(42, 36, "EpileptologistAI - analytics support output (not a standalone diagnosis)")
+    pdf.drawString(42, 36, "EpileptologistAI, analytics support output (not a standalone diagnosis)")
 
     pdf.save()
     return buffer.getvalue()
@@ -497,7 +843,7 @@ async def email_analytics_report(payload: AnalyticsEmailRequest):
     pdf_bytes = _build_analytics_pdf(payload)
 
     msg = EmailMessage()
-    msg["Subject"] = f"EpileptologistAI Analytics Report - {datetime.now().strftime('%Y-%m-%d')}"
+    msg["Subject"] = f"EpileptologistAI Analytics Report, {datetime.now().strftime('%Y-%m-%d')}"
     msg["From"] = formataddr((smtp_from_name, smtp_from))
     msg["To"] = payload.to_email
     msg["Date"] = formatdate(localtime=True)
@@ -683,7 +1029,7 @@ async def ws_pipeline(ws: WebSocket, session_id: str):
             if preds and not cancel_event.is_set():
                 avg_proba = sum(probas) / len(probas)
                 seizure_count = sum(1 for p in preds if p == 1)
-                has_epilepsy = int(seizure_count >= 2)  # more than 1 seizure → epilepsy
+                has_epilepsy = int(seizure_count >= 2)  # more than 1 seizure, epilepsy heuristic
                 try:
                     db.complete_session(session_id, len(preds), avg_proba, has_epilepsy)
                 except Exception as e:

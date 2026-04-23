@@ -9,7 +9,7 @@ import { getSessionPredictions, getUserSessions, type SessionRecord } from '../.
 
 const BAND_COLORS: Record<string, string> = {
   Delta: '#8b5cf6',
-  Theta: '#06b6d4',
+  Theta: '#e879f9',
   Alpha: '#34d399',
   Beta: '#f59e0b',
   Gamma: '#ef4444',
@@ -113,7 +113,15 @@ function generateHistory(n: number): HistoryPoint[] {
 
 export default function DataDisplayPage() {
   const { user } = useAuth()
-  const { lastWindowData, isMonitoring } = useMonitoring()
+  const {
+    lastWindowData,
+    isMonitoring,
+    monitoringStatus,
+    livePredictions,
+    liveRunStartedAtMs,
+    liveSessionId,
+    completion,
+  } = useMonitoring()
   const [tab, setTab] = useState<'signals' | 'power' | 'history'>('signals')
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -125,12 +133,46 @@ export default function DataDisplayPage() {
   const [activeSession, setActiveSession] = useState<SessionRecord | null>(null)
 
   const bandPowers = useMemo(generateBandPowers, [])
+
+  const isLiveHistory =
+    (monitoringStatus === 'running' || monitoringStatus === 'starting') &&
+    livePredictions.length > 0 &&
+    liveRunStartedAtMs != null &&
+    liveSessionId != null
+
+  const displayHistory = useMemo((): HistoryPoint[] => {
+    if (!isLiveHistory || liveRunStartedAtMs == null || !liveSessionId) {
+      return history
+    }
+    const anchor = liveRunStartedAtMs
+    return livePredictions.map((p) => {
+      const start = new Date(anchor + (p.window - 1) * WINDOW_DURATION_SEC * 1000)
+      const end = new Date(start.getTime() + WINDOW_DURATION_SEC * 1000)
+      return {
+        window: p.window,
+        proba: p.probability,
+        prediction: p.prediction,
+        startedAt: start.toISOString(),
+        endedAt: end.toISOString(),
+        capturedAt: new Date().toISOString(),
+        source: 'session' as const,
+        sessionId: liveSessionId,
+      }
+    })
+  }, [history, isLiveHistory, livePredictions, liveRunStartedAtMs, liveSessionId])
+
   const collectedAtLabel = useMemo(() => {
-    if (!history.length) return null
-    return formatDateTime(history[0].startedAt)
-  }, [history])
-  const avgProbability = useMemo(() => history.reduce((s, h) => s + h.proba, 0) / Math.max(history.length, 1), [history])
-  const flaggedWindows = useMemo(() => history.filter((h) => h.proba >= 0.5).length, [history])
+    if (!displayHistory.length) return null
+    if (isLiveHistory && liveRunStartedAtMs != null) {
+      return `Live · started ${formatDateTime(new Date(liveRunStartedAtMs).toISOString())}`
+    }
+    return formatDateTime(displayHistory[0].startedAt)
+  }, [displayHistory, isLiveHistory, liveRunStartedAtMs])
+  const avgProbability = useMemo(
+    () => displayHistory.reduce((s, h) => s + h.proba, 0) / Math.max(displayHistory.length, 1),
+    [displayHistory]
+  )
+  const flaggedWindows = useMemo(() => displayHistory.filter((h) => h.proba >= 0.5).length, [displayHistory])
   const finalVerdict = flaggedWindows >= 2 ? 'Seizure Pattern' : 'No Seizure'
 
   const sendAnalyticsEmail = async () => {
@@ -138,7 +180,7 @@ export default function DataDisplayPage() {
       setEmailError('No recipient email found on your account.')
       return
     }
-    if (!history.length) {
+    if (!displayHistory.length) {
       setEmailError('No analytics data available to send yet.')
       return
     }
@@ -151,15 +193,15 @@ export default function DataDisplayPage() {
       const payload = {
         to_email: user.email,
         user_name: (user.user_metadata?.full_name as string | undefined) ?? user.email,
-        session_id: activeSession?.id ?? history[0]?.sessionId ?? null,
-        collected_at: activeSession?.started_at ?? history[0]?.startedAt ?? null,
+        session_id: activeSession?.id ?? displayHistory[0]?.sessionId ?? liveSessionId ?? null,
+        collected_at: activeSession?.started_at ?? displayHistory[0]?.startedAt ?? null,
         summary: {
-          total_windows: history.length,
+          total_windows: displayHistory.length,
           avg_probability: avgProbability,
           flagged_windows: flaggedWindows,
           final_verdict: finalVerdict,
         },
-        history: history.map((h) => ({
+        history: displayHistory.map((h) => ({
           window: h.window,
           probability: h.proba,
           prediction: h.prediction,
@@ -288,61 +330,65 @@ export default function DataDisplayPage() {
     return () => {
       cancelled = true
     }
-  }, [user])
+  }, [user, completion])
 
   const tabs = [
-    { key: 'signals' as const, label: 'EEG Signals' },
+    { key: 'signals' as const, label: 'EEG Signal' },
     { key: 'power' as const, label: 'Band Power' },
     { key: 'history' as const, label: 'Prediction History' },
   ]
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100">Data Analysis</h1>
-        <p className="text-sm text-slate-500 mt-1">Detailed view of EEG signals, frequency bands, and prediction history</p>
+    <div className="relative space-y-6">
+      <div
+        className="pointer-events-none absolute -right-16 -top-16 h-48 w-72 rounded-full bg-fuchsia-600/[0.1] blur-3xl"
+        aria-hidden
+      />
+      <div className="relative">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-100 sm:text-[1.75rem]">Data Analysis</h1>
+        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-slate-500">
+          EEG signal, frequency bands, and prediction history from your sessions.
+        </p>
       </div>
 
-      <div className="flex gap-1 p-1 bg-surface rounded-xl border border-gray-800/50 w-fit">
-        {tabs.map(({ key, label }) => (
-          <Button
-            key={key}
-            variant={tab === key ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </Button>
-        ))}
+      <div className="relative w-fit [perspective:800px]">
+        <div className="flex gap-0.5 rounded-2xl border border-white/[0.08] bg-black/30 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_16px_40px_-24px_rgba(0,0,0,0.6)] backdrop-blur-md">
+          {tabs.map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={tab === key ? 'default' : 'ghost'}
+              size="sm"
+              className={
+                tab === key
+                  ? 'rounded-xl shadow-[0_10px_28px_-8px_rgba(124,58,246,0.45)] ring-1 ring-white/10'
+                  : 'rounded-xl transition-transform duration-200 hover:bg-white/[0.04]'
+              }
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {tab === 'signals' && (
-        <div className="space-y-4">
-          <Card className="p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800/50">
-              <h2 className="text-sm font-semibold text-slate-200">Raw EEG Signal</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Unfiltered 6-channel recording from device</p>
-            </div>
-            <div className="p-3">
-              <EEGWaveform channels={6} height={280} speed={2} streamedWindow={lastWindowData} paused={!isMonitoring} />
-            </div>
-          </Card>
-
-          <Card className="p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800/50">
-              <h2 className="text-sm font-semibold text-slate-200">Filtered Signal</h2>
-              <p className="text-xs text-slate-500 mt-0.5">After bandpass (0.5-50 Hz) and notch (60 Hz) filtering</p>
-            </div>
-            <div className="p-3">
-              <EEGWaveform channels={6} height={280} speed={2} streamedWindow={lastWindowData} paused={!isMonitoring} />
-            </div>
-          </Card>
-        </div>
+        <Card className="overflow-hidden p-0">
+          <div className="border-b border-gray-800/50 px-6 py-4">
+            <h2 className="text-sm font-semibold text-slate-200">EEG signal</h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+              Six-channel stream from the device (256 Hz). When monitoring is active, the canvas shows the latest
+              window; otherwise it stays paused for a stable demo view.
+            </p>
+          </div>
+          <div className="p-3">
+            <EEGWaveform channels={6} height={360} speed={2} streamedWindow={lastWindowData} paused={!isMonitoring} />
+          </div>
+        </Card>
       )}
 
       {tab === 'power' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card elevated>
             <h2 className="text-sm font-semibold text-slate-200 mb-4">Frequency Band Power Distribution</h2>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -366,7 +412,7 @@ export default function DataDisplayPage() {
 
           <div className="space-y-3">
             {bandPowers.map((band) => (
-              <Card key={band.name} className="flex items-center gap-4 py-4">
+              <Card key={band.name} elevated className="flex items-center gap-4 py-4">
                 <div
                   className="h-10 w-10 rounded-xl flex items-center justify-center"
                   style={{ background: `${BAND_COLORS[band.name]}15` }}
@@ -400,9 +446,16 @@ export default function DataDisplayPage() {
 
       {tab === 'history' && (
         <div className="space-y-4">
-          <Card>
+          <Card elevated>
             <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-sm font-semibold text-slate-200">Seizure Probability per Window</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-200">Seizure Probability per Window</h2>
+                {isLiveHistory && (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                    Live
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 {(activeSession || collectedAtLabel) && (
                   <p className="text-xs text-slate-500">
@@ -414,7 +467,7 @@ export default function DataDisplayPage() {
                   size="sm"
                   variant="outline"
                   onClick={sendAnalyticsEmail}
-                  disabled={emailingReport || !history.length}
+                  disabled={emailingReport || !displayHistory.length}
                 >
                   {emailingReport ? 'Sending...' : 'Email Report'}
                 </Button>
@@ -434,7 +487,7 @@ export default function DataDisplayPage() {
 
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={history} barSize={6}>
+                <BarChart data={displayHistory} barSize={6}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                   <XAxis dataKey="window" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={{ stroke: '#374151' }} label={{ value: 'Window #', position: 'insideBottom', offset: -2, fill: '#64748b', fontSize: 11 }} />
                   <YAxis domain={[0, 1]} tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={{ stroke: '#374151' }} label={{ value: 'Probability', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11 }} />
@@ -447,16 +500,16 @@ export default function DataDisplayPage() {
                     radius={[2, 2, 0, 0]}
                     cursor="pointer"
                     onClick={(_, index) => {
-                      const item = history[index]
+                      const item = displayHistory[index]
                       if (item) {
                         setSelectedWindow(item)
                       }
                     }}
                   >
-                    {history.map((entry, i) => (
+                    {displayHistory.map((entry, i) => (
                       <Cell
                         key={i}
-                        fill={entry.proba >= 0.5 ? '#ef4444' : '#06b6d4'}
+                        fill={entry.proba >= 0.5 ? '#ef4444' : '#c084fc'}
                         fillOpacity={0.75}
                         style={{ cursor: 'pointer' }}
                       />
@@ -480,12 +533,12 @@ export default function DataDisplayPage() {
             </div>
           </Card>
 
-          <Card>
+          <Card elevated>
             <h2 className="text-sm font-semibold text-slate-200 mb-3">Session Summary</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-xs text-slate-500">Total Windows</p>
-                <p className="text-lg font-bold font-mono text-slate-200">{history.length}</p>
+                <p className="text-lg font-bold font-mono text-slate-200">{displayHistory.length}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Avg Probability</p>
