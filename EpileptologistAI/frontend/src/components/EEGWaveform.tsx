@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 
 const CHANNEL_COLORS = ['#c084fc', '#34d399', '#e879f9', '#fb923c', '#f472b6', '#facc15']
+const DEFAULT_CHANNEL_LABELS = ['FP1-F7', 'F7-T7', 'T7-P7', 'FP2-F8', 'F8-T8', 'T8-P8']
 
 interface Props {
   channels?: number
@@ -55,7 +56,7 @@ export default function EEGWaveform({
         // channel label
         ctx.fillStyle = 'rgba(148, 163, 184, 0.6)'
         ctx.font = '10px JetBrains Mono, monospace'
-        ctx.fillText(channelLabels?.[ch] || `Column ${ch + 1}`, 4, ch * chHeight + 14)
+        ctx.fillText(channelLabels?.[ch] || DEFAULT_CHANNEL_LABELS[ch] || `Channel ${ch + 1}`, 4, ch * chHeight + 14)
 
         // divider line
         if (ch > 0) {
