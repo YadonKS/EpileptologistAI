@@ -481,7 +481,7 @@ export default function DataDisplayPage() {
               <p className="text-xs text-slate-500 mb-4">Loading prediction history...</p>
             )}
 
-            {historyError && (
+            {historyError && displayHistory.length === 0 && (
               <p className="text-xs text-amber-400 mb-4">{historyError}</p>
             )}
 
