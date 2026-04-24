@@ -4,6 +4,14 @@ Rules: Answer only about this project, stack, and demo behavior. If asked for me
 
 export type AssistantMessage = { role: 'user' | 'assistant'; content: string }
 
+function resolveAssistantUrl(): string {
+  const configuredUrl = import.meta.env.VITE_PROJECT_ASSISTANT_URL?.trim()
+  if (configuredUrl) return configuredUrl
+
+  // Default to the local FastAPI route, which is already proxied in Vite dev.
+  return '/api/project-assistant'
+}
+
 function extractReplyText(data: unknown): string | null {
   if (!data || typeof data !== 'object') return null
   const d = data as Record<string, unknown>
@@ -40,13 +48,7 @@ export async function askProjectAssistant(
   history: AssistantMessage[],
   userQuestion: string
 ): Promise<string> {
-  const url = import.meta.env.VITE_PROJECT_ASSISTANT_URL?.trim()
-  if (!url) {
-    throw new Error(
-      'Assistant URL is not configured. Set VITE_PROJECT_ASSISTANT_URL in frontend/.env (see README note in code comments).'
-    )
-  }
-
+  const url = resolveAssistantUrl()
   const apiKey = import.meta.env.VITE_PROJECT_ASSISTANT_API_KEY?.trim()
 
   const messages = [
